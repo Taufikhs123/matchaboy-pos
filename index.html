@@ -952,6 +952,18 @@ function applyRemote(res) {
   APP.orderItems = res.orderItems || []; APP.ledger = res.ledger || [];
   APP.stockLog = res.stockLog || [];
 
+  // Apply cloud settings (scriptUrl, ghRepo) — so new devices get them automatically
+  if (res.settings) {
+    if (res.settings.scriptUrl && !APP.scriptUrl) {
+      APP.scriptUrl = res.settings.scriptUrl;
+      localStorage.setItem('mb_script_url', APP.scriptUrl);
+    }
+    if (res.settings.ghRepo) {
+      APP.ghRepo = res.settings.ghRepo;
+      localStorage.setItem('mb_gh_repo', APP.ghRepo);
+    }
+  }
+
   // Normalize all date fields to yyyy-MM-dd (in case cloud returns ISO datetime)
   normalizeDates(APP.orders);
   normalizeDates(APP.ledger);
@@ -1970,6 +1982,8 @@ async function saveAndTestUrl() {
     if (json.ok) {
       el.innerHTML = '<span style="color:var(--green)">✓ Connection successful!</span>';
       setSyncOk(); hideBanner();
+      // Save script URL to spreadsheet so other devices can find it
+      apiSync('saveSettings', { scriptUrl: url, ghRepo: APP.ghRepo || '' });
     } else {
       el.innerHTML = '<span style="color:var(--red)">✗ ' + (json.error || 'Error') + '</span>';
     }
@@ -2003,7 +2017,11 @@ function saveGitHubSettings() {
   fetch('https://api.github.com/repos/' + repo, { headers: { Authorization: 'token ' + token } })
     .then(r => r.json())
     .then(d => {
-      if (d.full_name) el.innerHTML = '<span style="color:var(--green)">✓ Connected to ' + d.full_name + '</span>';
+      if (d.full_name) {
+        el.innerHTML = '<span style="color:var(--green)">✓ Connected to ' + d.full_name + '</span>';
+        // Save repo name to spreadsheet so other devices know where images are
+        apiSync('saveSettings', { ghRepo: repo });
+      }
       else el.innerHTML = '<span style="color:var(--red)">✗ ' + (d.message || 'Error') + '</span>';
     })
     .catch(() => { el.innerHTML = '<span style="color:var(--red)">✗ Connection failed</span>'; });

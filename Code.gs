@@ -99,6 +99,9 @@ function doGet(e) {
       // --- Stock Log ---
       case "getStockLog":     return jsonResponse(handleGetStockLog(ss));
 
+      // --- Settings ---
+      case "saveSettings":    return jsonResponse(handleSaveSettings(ss, data));
+
       // --- Sync All (load everything at once) ---
       case "syncAll":         return jsonResponse(handleSyncAll(ss));
 
@@ -563,11 +566,47 @@ function handleGetStockLog(ss) {
   return { ok: true, data: sheetToObjects(sheet) };
 }
 
+// ─── SETTINGS HANDLER ──────────────────────────────────────
+
+function handleSaveSettings(ss, data) {
+  var sheet = ss.getSheetByName("Settings");
+  if (!sheet) {
+    sheet = ss.insertSheet("Settings");
+    sheet.getRange(1, 1, 1, 2).setValues([["key", "value"]]).setFontWeight("bold");
+  }
+  // Save each key-value pair
+  var keys = Object.keys(data);
+  for (var k = 0; k < keys.length; k++) {
+    var key = keys[k];
+    var rowNum = -1;
+    var allData = sheet.getDataRange().getValues();
+    for (var i = 1; i < allData.length; i++) {
+      if (allData[i][0] === key) { rowNum = i + 1; break; }
+    }
+    if (rowNum > 0) {
+      sheet.getRange(rowNum, 2).setValue(data[key]);
+    } else {
+      sheet.appendRow([key, data[key]]);
+    }
+  }
+  return { ok: true };
+}
+
 // ─── SYNC ALL (bulk load) ───────────────────────────────────
 
 function handleSyncAll(ss) {
+  // Get settings from Settings sheet if it exists
+  var settings = {};
+  var settingsSheet = ss.getSheetByName("Settings");
+  if (settingsSheet) {
+    var sData = settingsSheet.getDataRange().getValues();
+    for (var i = 1; i < sData.length; i++) {
+      if (sData[i][0]) settings[sData[i][0]] = sData[i][1];
+    }
+  }
   return {
     ok: true,
+    settings: settings,
     menu: sheetToObjects(ss.getSheetByName("Menu")),
     ingredients: sheetToObjects(ss.getSheetByName("Ingredients")),
     recipes: sheetToObjects(ss.getSheetByName("Recipes")),
