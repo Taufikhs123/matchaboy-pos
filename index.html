@@ -1,0 +1,2015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0c0a08">
+<title>MatchaBoy — POS System</title>
+<link rel="manifest" href="data:application/json;base64,">
+<script>
+// Inline PWA manifest
+const mf = {
+  name: "MatchaBoy POS",
+  short_name: "MatchaBoy",
+  description: "POS & Inventory System",
+  start_url: "./",
+  display: "standalone",
+  background_color: "#0c0a08",
+  theme_color: "#f0a030",
+  icons: [{
+    src: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="32" fill="#1c1916"/><text x="96" y="120" font-size="100" text-anchor="middle" fill="#f0a030">☕</text></svg>'),
+    sizes: "192x192", type: "image/svg+xml"
+  },{
+    src: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="80" fill="#1c1916"/><text x="256" y="320" font-size="260" text-anchor="middle" fill="#f0a030">☕</text></svg>'),
+    sizes: "512x512", type: "image/svg+xml"
+  }]
+};
+const mfBlob = new Blob([JSON.stringify(mf)], {type:'application/json'});
+document.querySelector('link[rel=manifest]').href = URL.createObjectURL(mfBlob);
+
+// Register service worker for offline + install prompt
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'matchaboy-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
+    });
+    self.addEventListener('fetch', e => {
+      if (e.request.url.includes('script.google.com') || e.request.url.includes('fonts.g')) return;
+      e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    });
+  `;
+  const swBlob = new Blob([swCode], {type:'application/javascript'});
+  navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=Nunito:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   CSS VARIABLES & RESET
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --bg:#0c0a08;--bg2:#141210;--surface:#1c1916;--surface2:#242018;--surface3:#2e2a22;
+  --border:#3c3830;--border2:#4a4540;
+  --accent:#f0a030;--accent2:#d4882a;--accent-m:rgba(240,160,48,0.12);--accent-m2:rgba(240,160,48,0.06);
+  --green:#72c47e;--green-m:rgba(114,196,126,0.12);
+  --red:#e87070;--red-m:rgba(232,112,112,0.12);
+  --blue:#70a8e8;--blue-m:rgba(112,168,232,0.12);
+  --purple:#b070e8;--purple-m:rgba(176,112,232,0.12);
+  --teal:#50c8b8;--teal-m:rgba(80,200,184,0.12);
+  --text:#f2ece4;--text2:#a89880;--text3:#6a6050;
+  --r:12px;--r-sm:7px;--r-lg:18px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+button{cursor:pointer;border:none;background:none}
+input,select,textarea{font-family:'Nunito',sans-serif;font-size:14px}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ═══ LOGIN ═══ */
+#login-screen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center}
+#login-screen.hidden{display:none}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:40px;width:400px;max-width:95vw;position:relative;overflow:hidden}
+.login-card::before{content:'';position:absolute;top:-60px;right:-60px;width:180px;height:180px;background:radial-gradient(circle,rgba(240,160,48,0.15),transparent 70%);pointer-events:none}
+.login-logo{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--accent);margin-bottom:4px;letter-spacing:-1px}
+.login-logo span{color:var(--text3);font-weight:400}
+.login-sub{font-size:13px;color:var(--text3);margin-bottom:28px}
+.lf{margin-bottom:12px}
+.lf label{display:block;font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px}
+.lf input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 13px;color:var(--text);font-size:13px;outline:none;transition:border-color .15s}
+.lf input:focus{border-color:var(--accent)}
+.login-error{font-size:12px;color:var(--red);margin-bottom:10px;min-height:16px}
+
+/* ═══ BUTTONS ═══ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:var(--r-sm);border:none;font-family:'Nunito',sans-serif;font-size:13px;font-weight:600;transition:all .15s;white-space:nowrap;color:var(--text)}
+.btn-primary{background:var(--accent);color:#1a0e00}
+.btn-primary:hover{background:#fbb040;transform:translateY(-1px)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-ghost{background:transparent;color:var(--text3)}
+.btn-ghost:hover{color:var(--text);background:var(--surface2);border-radius:var(--r-sm)}
+.btn-danger{background:var(--red-m);border:1px solid var(--red);color:var(--red)}
+.btn-danger:hover{background:rgba(232,112,112,.22)}
+.btn-green{background:var(--green-m);border:1px solid var(--green);color:var(--green)}
+.btn-sm{padding:5px 9px;font-size:11px}
+.btn-lg{padding:13px 22px;font-size:15px}
+.btn-full{width:100%}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ═══ LAYOUT ═══ */
+#app{display:none;height:100vh;overflow:hidden;flex-direction:column}
+#app.visible{display:flex}
+
+.offline-banner{display:none;background:var(--red-m);border-bottom:1px solid var(--red);padding:7px 20px;font-size:12px;color:var(--red);text-align:center}
+.offline-banner.show{display:block}
+
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 18px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;gap:12px}
+.topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--accent);letter-spacing:-.5px;white-space:nowrap}
+.topbar-logo span{color:var(--text3);font-weight:400}
+.topbar-branch{font-size:11px;font-family:'DM Mono',monospace;color:var(--text3);background:var(--surface2);border:1px solid var(--border);padding:4px 10px;border-radius:20px}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);transition:background .3s}
+.sync-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.sync-dot.busy{background:var(--accent);animation:blink .7s infinite}
+.sync-dot.err{background:var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--text3)}
+
+.app-body{display:flex;flex:1;overflow:hidden}
+.sidebar{width:210px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;padding:10px 8px;gap:2px;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-sm);border:1px solid transparent;background:transparent;color:var(--text3);font-family:'Nunito',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;text-align:left;width:100%}
+.nav-item:hover{color:var(--text);background:var(--surface2)}
+.nav-item.active{background:var(--accent-m);border-color:rgba(240,160,48,.3);color:var(--accent)}
+.nav-icon{font-size:15px;width:20px;text-align:center}
+.nav-sep{border:none;border-top:1px solid var(--border);margin:6px 4px}
+.page-area{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.page{display:none;flex:1;overflow-y:auto;padding:18px}
+.page.active{display:flex;flex-direction:column}
+
+/* ═══ COMMON UI ═══ */
+.page-title{font-family:'Syne',sans-serif;font-size:21px;font-weight:700;color:var(--text);margin-bottom:3px}
+.page-sub{font-size:12px;color:var(--text3);margin-bottom:18px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.card-title{font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:10px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 11px;color:var(--text);outline:none;transition:border-color .15s;font-size:13px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.field select option{background:var(--surface2)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px}
+.stat-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px}
+.stat-val{font-family:'Syne',sans-serif;font-size:21px;font-weight:700}
+.stat-val.accent{color:var(--accent)}.stat-val.green{color:var(--green)}.stat-val.red{color:var(--red)}.stat-val.blue{color:var(--blue)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-family:'DM Mono',monospace;font-weight:500}
+.badge-green{background:var(--green-m);color:var(--green);border:1px solid rgba(114,196,126,.3)}
+.badge-red{background:var(--red-m);color:var(--red);border:1px solid rgba(232,112,112,.3)}
+.badge-accent{background:var(--accent-m);color:var(--accent);border:1px solid rgba(240,160,48,.3)}
+.badge-blue{background:var(--blue-m);color:var(--blue);border:1px solid rgba(112,168,232,.3)}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;padding:8px 11px;font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);border-bottom:1px solid var(--border)}
+.tbl td{padding:9px 11px;border-bottom:1px solid rgba(60,56,48,.5);font-size:12px;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--surface2)}
+.divider{border:none;border-top:1px solid var(--border);margin:12px 0}
+.empty-state{text-align:center;padding:44px 20px;color:var(--text3)}
+.empty-state .icon{font-size:38px;margin-bottom:10px}
+.empty-state p{font-size:13px}
+.row{display:flex;gap:10px;align-items:flex-start}
+.row .field{flex:1}
+
+/* ═══ MODAL ═══ */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.77);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;width:500px;max-width:100%;max-height:90vh;overflow-y:auto}
+.modal-lg{width:700px}
+.modal-title{font-family:'Syne',sans-serif;font-size:19px;font-weight:700;margin-bottom:16px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
+/* ═══ TOAST ═══ */
+.toast{position:fixed;bottom:22px;right:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:11px 16px;font-size:13px;max-width:300px;z-index:999;transform:translateY(80px);opacity:0;transition:all .3s}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{border-color:var(--green)}.toast.error{border-color:var(--red)}.toast.warn{border-color:var(--accent)}
+
+/* ═══ POS ═══ */
+#page-pos{padding:0;overflow:hidden}
+#page-pos.active{display:grid;grid-template-columns:1fr 380px;height:100%}
+.pos-left{padding:16px;overflow-y:auto;border-right:1px solid var(--border)}
+.pos-right{padding:16px;background:var(--surface);overflow-y:auto;display:flex;flex-direction:column}
+.pay-selector{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.pay-btn{flex:1;padding:8px 7px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:'Nunito',sans-serif;font-size:12px;font-weight:600;transition:all .15s;text-align:center;white-space:nowrap}
+.pay-btn.selected{border-color:var(--accent);background:var(--accent-m);color:var(--accent)}
+.menu-category-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.cat-tab{padding:5px 13px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.cat-tab.active,.cat-tab:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-m2)}
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:9px}
+.menu-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 8px;cursor:pointer;transition:all .15s;text-align:center;user-select:none;overflow:hidden}
+.menu-card:hover{border-color:var(--accent);background:var(--accent-m2);transform:translateY(-1px)}
+.menu-card:active{transform:scale(.97)}
+.menu-card-img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--r-sm);margin-bottom:6px;background:var(--surface2)}
+.menu-icon{font-size:24px;margin-bottom:6px}
+.menu-name{font-size:12px;font-weight:600;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu-price{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent)}
+/* Image upload preview */
+.img-upload-area{border:2px dashed var(--border);border-radius:var(--r-sm);padding:16px;text-align:center;cursor:pointer;transition:border-color .15s;position:relative;margin-bottom:10px}
+.img-upload-area:hover{border-color:var(--accent)}
+.img-upload-area img{max-width:120px;max-height:120px;border-radius:var(--r-sm)}
+.img-upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.order-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:12px}
+.order-list{flex:1;overflow-y:auto;margin-bottom:12px;min-height:60px}
+.order-item{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--border)}
+.order-item:last-child{border-bottom:none}
+.order-item-info{flex:1}
+.order-item-name{font-size:13px;font-weight:600}
+.order-item-price{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent)}
+.qty-ctrl{display:flex;align-items:center;gap:6px}
+.qty-btn{width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--text);display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .15s}
+.qty-btn:hover{border-color:var(--accent);color:var(--accent)}
+.qty-num{font-family:'DM Mono',monospace;font-size:12px;min-width:20px;text-align:center}
+.order-totals{background:var(--surface2);border-radius:var(--r-sm);padding:12px;margin-bottom:10px}
+.tot-row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:var(--text2)}
+.tot-row.grand{font-family:'Syne',sans-serif;font-size:19px;font-weight:700;color:var(--text);padding-top:9px;border-top:1px solid var(--border);margin-top:5px}
+.tot-row.grand .val{color:var(--accent)}
+.cash-change{background:var(--green-m);border:1px solid rgba(114,196,126,.3);border-radius:var(--r-sm);padding:9px 13px;margin-bottom:9px;display:none}
+.cash-change .cl{font-size:10px;color:var(--green);margin-bottom:3px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.5px}
+.cash-change .cv{font-family:'Syne',sans-serif;font-size:19px;font-weight:700;color:var(--green)}
+
+/* ═══ STOCK BAR ═══ */
+.stock-bar{height:4px;background:var(--surface3);border-radius:2px;margin-top:3px;overflow:hidden}
+.stock-bar-fill{height:100%;border-radius:2px;transition:width .4s}
+
+/* ═══ LEDGER ═══ */
+.ledger-type-row{display:flex;gap:8px;margin-bottom:12px}
+.led-type-btn{flex:1;padding:9px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;font-family:'Nunito',sans-serif;text-align:center;transition:all .15s}
+.led-type-btn.in.active{border-color:var(--green);background:var(--green-m);color:var(--green)}
+.led-type-btn.out.active{border-color:var(--red);background:var(--red-m);color:var(--red)}
+
+/* ═══ REPORTS ═══ */
+.report-tabs{display:flex;gap:6px;margin-bottom:18px}
+.report-tab{padding:7px 18px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;font-family:'Nunito',sans-serif;transition:all .15s}
+.report-tab.active{border-color:var(--accent);background:var(--accent-m);color:var(--accent)}
+.payment-breakdown{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.pay-box{background:var(--surface2);border-radius:var(--r-sm);padding:11px;text-align:center;border:1px solid var(--border)}
+.pay-box .pbl{font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase;margin-bottom:5px}
+.pay-box .pbv{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--accent)}
+
+/* ═══ INGREDIENT ROW ═══ */
+.ing-row{display:flex;gap:7px;align-items:center;margin-bottom:7px;padding:9px;background:var(--surface2);border-radius:var(--r-sm);border:1px solid var(--border)}
+.ing-row select,.ing-row input{flex:1;background:var(--surface3);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;color:var(--text);font-size:12px;outline:none}
+.ing-row input{max-width:100px}
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* ═══ COGS ═══ */
+.cogs-menu-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.cogs-menu-card:hover{border-color:var(--accent-m)}
+.cogs-menu-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cogs-menu-name{font-size:15px;font-weight:700}
+.cogs-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:5px 0;border-bottom:1px solid rgba(60,56,48,.4);font-size:12px;color:var(--text2)}
+.cogs-row:last-child{border-bottom:none}
+.cogs-total-row{display:flex;justify-content:space-between;padding:8px 0 0;font-weight:700;font-size:13px;border-top:1px solid var(--border);margin-top:4px}
+
+/* ═══ RESPONSIVE ═══ */
+@media(max-width:900px){
+  .sidebar{width:56px;padding:10px 4px}
+  .sidebar .nav-item span:not(.nav-icon){display:none}
+  .sidebar .nav-item{justify-content:center;padding:10px}
+  #page-pos.active{grid-template-columns:1fr}
+  .pos-right{border-top:1px solid var(--border);max-height:45vh}
+}
+@media(max-width:600px){
+  .sidebar{display:none}
+  .topbar{padding:0 10px}
+  .payment-breakdown{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LOGIN
+     ═══════════════════════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">Matcha<span>Boy</span></div>
+    <div class="login-sub">Point of Sale System</div>
+    <div class="lf">
+      <label>Branch Name</label>
+      <input type="text" id="login-branch" placeholder="e.g. main" value="main">
+    </div>
+    <div class="lf">
+      <label>Password</label>
+      <input type="password" id="login-password" placeholder="Enter branch password">
+    </div>
+    <div class="login-error" id="login-error"></div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()" id="login-btn" style="margin-bottom:10px">Sign In</button>
+    <button class="btn btn-outline btn-full" onclick="enterDemo()">Offline / Demo Mode</button>
+    <div style="margin-top:14px;padding:11px;background:var(--surface2);border-radius:var(--r-sm);font-size:11px;color:var(--text3);line-height:1.7">
+      💡 <strong style="color:var(--text2)">Demo mode:</strong> Runs fully offline using browser storage. Configure Google Sheets URL in Settings to sync data to the cloud.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     APP
+     ═══════════════════════════════════════════════════════════ -->
+<div id="app">
+  <div class="offline-banner" id="offline-banner">⚠️ Google Sheets unreachable — working from local cache. Data will sync on next successful connection.</div>
+
+  <div class="topbar">
+    <div class="topbar-logo">Matcha<span>Boy</span></div>
+    <div class="topbar-branch" id="branch-label">Branch: —</div>
+    <div style="flex:1"></div>
+    <div class="topbar-right">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span class="sync-label" id="sync-label">Local</span>
+      <button class="btn btn-ghost btn-sm" onclick="fullSync()" title="Sync now">🔄</button>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">← Exit</button>
+    </div>
+  </div>
+
+  <div class="app-body">
+    <nav class="sidebar">
+      <button class="nav-item active" onclick="gotoPage('pos',this)"><span class="nav-icon">☕</span> <span>Cashier</span></button>
+      <button class="nav-item" onclick="gotoPage('stock',this)"><span class="nav-icon">📦</span> <span>Stock</span></button>
+      <button class="nav-item" onclick="gotoPage('menu',this)"><span class="nav-icon">🍽️</span> <span>Menu</span></button>
+      <button class="nav-item" onclick="gotoPage('cogs',this)"><span class="nav-icon">🧮</span> <span>COGS</span></button>
+      <hr class="nav-sep">
+      <button class="nav-item" onclick="gotoPage('ledger',this)"><span class="nav-icon">💰</span> <span>Cash Flow</span></button>
+      <button class="nav-item" onclick="gotoPage('orders',this)"><span class="nav-icon">🧾</span> <span>Orders</span></button>
+      <button class="nav-item" onclick="gotoPage('report',this)"><span class="nav-icon">📊</span> <span>Reports</span></button>
+      <hr class="nav-sep">
+      <button class="nav-item" onclick="gotoPage('settings',this)"><span class="nav-icon">⚙️</span> <span>Settings</span></button>
+    </nav>
+
+    <div class="page-area">
+
+      <!-- ══ POS ══ -->
+      <div class="page active" id="page-pos">
+        <div class="pos-left">
+          <div style="margin-bottom:12px">
+            <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:8px">Payment Method</div>
+            <div class="pay-selector">
+              <button class="pay-btn selected" onclick="selectPay(this,'cash')">💵 Cash</button>
+              <button class="pay-btn" onclick="selectPay(this,'dana')">🟦 DANA</button>
+              <button class="pay-btn" onclick="selectPay(this,'gofood')">🟢 GoFood</button>
+              <button class="pay-btn" onclick="selectPay(this,'shopee')">🟠 ShopeeFood</button>
+              <button class="pay-btn" onclick="selectPay(this,'grab')">🟩 Grab</button>
+            </div>
+          </div>
+          <div class="menu-category-tabs" id="cat-tabs"></div>
+          <div class="menu-grid" id="menu-grid">
+            <div class="empty-state" style="grid-column:1/-1"><div class="icon">🍽️</div><p>No menu items yet</p></div>
+          </div>
+        </div>
+        <div class="pos-right">
+          <div class="order-title">🧾 Current Order</div>
+          <div class="order-list" id="order-list">
+            <div class="empty-state" style="padding:24px 10px"><div class="icon">🛒</div><p>Add items</p></div>
+          </div>
+          <hr class="divider">
+          <div class="order-totals">
+            <div class="tot-row"><span>Subtotal</span><span id="pos-sub">Rp 0</span></div>
+            <div class="tot-row"><span id="tax-label">Tax (0%)</span><span id="pos-tax">Rp 0</span></div>
+            <div class="tot-row grand"><span>Total</span><span class="val" id="pos-grand">Rp 0</span></div>
+          </div>
+          <div class="field" id="cash-field">
+            <label>Customer Cash</label>
+            <input type="number" id="cash-input" placeholder="0" oninput="calcChange()" min="0">
+          </div>
+          <div class="cash-change" id="change-box">
+            <div class="cl">Change</div>
+            <div class="cv" id="change-val">Rp 0</div>
+          </div>
+          <div class="field">
+            <label>Order Note</label>
+            <input type="text" id="order-note" placeholder="e.g. no ice, less sugar…">
+          </div>
+          <button class="btn btn-primary btn-full btn-lg" onclick="placeOrder()" id="pos-submit-btn">✓ Place Order</button>
+          <button class="btn btn-outline btn-full" style="margin-top:7px" onclick="clearOrder()">🗑️ Clear</button>
+        </div>
+      </div>
+
+      <!-- ══ STOCK ══ -->
+      <div class="page" id="page-stock">
+        <div class="page-title">📦 Ingredient Stock</div>
+        <div class="page-sub">Manage ingredient inventory. Low stock alerts shown automatically.</div>
+        <div style="display:flex;gap:10px;margin-bottom:14px">
+          <button class="btn btn-primary" onclick="openAddIngredient()">+ Add Ingredient</button>
+        </div>
+        <div id="low-stock-alert" style="display:none;background:var(--red-m);border:1px solid var(--red);border-radius:var(--r);padding:14px;margin-bottom:12px">
+          <div class="card-title" style="color:var(--red)">⚠️ Low Stock Alert</div>
+          <div id="low-stock-list"></div>
+        </div>
+        <div class="card">
+          <table class="tbl">
+            <thead><tr>
+              <th>Ingredient</th><th>Current Stock</th><th>Unit</th><th>Min Level</th>
+              <th>Pack Size</th><th>Pack Price</th><th>Cost/Unit</th>
+              <th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="stock-table"></tbody>
+          </table>
+          <div class="empty-state" id="stock-empty"><div class="icon">📦</div><p>No ingredients yet</p></div>
+        </div>
+      </div>
+
+      <!-- ══ MENU ══ -->
+      <div class="page" id="page-menu">
+        <div class="page-title">🍽️ Menu Management</div>
+        <div class="page-sub">Add items with 4 payment-method prices and ingredient usage per order.</div>
+        <div style="display:flex;gap:10px;margin-bottom:14px">
+          <button class="btn btn-primary" onclick="openAddMenu()">+ Add Menu Item</button>
+        </div>
+        <div class="card">
+          <table class="tbl">
+            <thead><tr><th>Item</th><th>Category</th><th>Cash</th><th>DANA</th><th>GoFood</th><th>Shopee</th><th>Grab</th><th>Ingredients</th><th>Actions</th></tr></thead>
+            <tbody id="menu-table"></tbody>
+          </table>
+          <div class="empty-state" id="menu-empty"><div class="icon">🍽️</div><p>No menu items yet</p></div>
+        </div>
+      </div>
+
+      <!-- ══ COGS ══ -->
+      <div class="page" id="page-cogs">
+        <div class="page-title">🧮 COGS — Cost of Goods Sold</div>
+        <div class="page-sub">View ingredient cost breakdown per menu item.</div>
+        <div style="display:flex;gap:10px;margin-bottom:14px">
+          <button class="btn btn-outline" onclick="renderCogs()">🔄 Recalculate</button>
+        </div>
+        <div id="cogs-content">
+          <div class="empty-state"><div class="icon">🧮</div><p>Add menu items and ingredient costs to see COGS breakdown</p></div>
+        </div>
+      </div>
+
+      <!-- ══ LEDGER ══ -->
+      <div class="page" id="page-ledger">
+        <div class="page-title">💰 Cash Flow</div>
+        <div class="page-sub">Record income and expenses. Sales auto-recorded on each order.</div>
+        <div style="display:grid;grid-template-columns:320px 1fr;gap:14px;flex:1;overflow:hidden">
+          <div style="overflow-y:auto">
+            <div class="card">
+              <div class="card-title">Add Entry</div>
+              <div class="ledger-type-row">
+                <button class="led-type-btn in active" id="led-in-btn" onclick="setLedType('Income')">↑ Income</button>
+                <button class="led-type-btn out" id="led-out-btn" onclick="setLedType('Expense')">↓ Expense</button>
+              </div>
+              <div class="field"><label>Category</label>
+                <select id="led-cat">
+                  <option value="Sales">Sales</option><option value="Fund">Fund</option><option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="field"><label>Amount (Rp)</label><input type="number" id="led-amount" placeholder="0" min="0"></div>
+              <div class="field"><label>Payment Method</label>
+                <select id="led-payment">
+                  <option value="cash">💵 Cash</option>
+                  <option value="dana">📱 DANA (QRIS)</option>
+                  <option value="gofood">📱 GoFood (QRIS)</option>
+                  <option value="shopee">📱 ShopeeFood (QRIS)</option>
+                  <option value="grab">📱 Grab (QRIS)</option>
+                </select>
+              </div>
+              <div class="field"><label>Description</label><input type="text" id="led-desc" placeholder="Details…"></div>
+              <div class="field"><label>Date</label><input type="date" id="led-date"></div>
+              <button class="btn btn-primary btn-full" onclick="addLedgerEntry()">Add Entry</button>
+            </div>
+            <div class="card">
+              <div class="card-title">Summary</div>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <div class="stat-box" style="flex:1"><div class="stat-label">Total In</div><div class="stat-val green" id="led-total-in">Rp 0</div></div>
+                <div class="stat-box" style="flex:1"><div class="stat-label">Total Out</div><div class="stat-val red" id="led-total-out">Rp 0</div></div>
+              </div>
+              <div class="stat-box" style="margin-bottom:8px"><div class="stat-label">Total Balance</div><div class="stat-val accent" id="led-balance">Rp 0</div></div>
+            </div>
+            <div class="card">
+              <div class="card-title">💵 Cash vs 📱 QRIS Breakdown</div>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <div class="stat-box" style="flex:1;border-color:rgba(114,196,126,.3)">
+                  <div class="stat-label">💵 Cash In</div><div class="stat-val green" id="led-cash-in" style="font-size:16px">Rp 0</div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Out: <span id="led-cash-out">Rp 0</span></div>
+                  <hr style="border:none;border-top:1px solid var(--border);margin:6px 0">
+                  <div class="stat-label">Cash Balance</div><div class="stat-val green" id="led-cash-bal" style="font-size:18px">Rp 0</div>
+                </div>
+                <div class="stat-box" style="flex:1;border-color:rgba(112,168,232,.3)">
+                  <div class="stat-label">📱 QRIS In</div><div class="stat-val blue" id="led-qris-in" style="font-size:16px">Rp 0</div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Out: <span id="led-qris-out">Rp 0</span></div>
+                  <hr style="border:none;border-top:1px solid var(--border);margin:6px 0">
+                  <div class="stat-label">QRIS Balance</div><div class="stat-val blue" id="led-qris-bal" style="font-size:18px">Rp 0</div>
+                </div>
+              </div>
+              <div style="font-size:10px;color:var(--text3);line-height:1.6">
+                QRIS = DANA + GoFood + ShopeeFood (all online payments)
+              </div>
+            </div>
+          </div>
+          <div style="overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700">History</div>
+              <div style="display:flex;gap:7px">
+                <input type="date" id="led-filter-from" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 9px;color:var(--text);font-size:12px;outline:none">
+                <input type="date" id="led-filter-to" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 9px;color:var(--text);font-size:12px;outline:none">
+                <button class="btn btn-outline btn-sm" onclick="renderLedger()">Filter</button>
+              </div>
+            </div>
+            <div class="card" style="margin-bottom:0">
+              <table class="tbl">
+                <thead><tr><th>Date</th><th>Type</th><th>Via</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead>
+                <tbody id="led-table"></tbody>
+              </table>
+              <div class="empty-state" id="led-empty"><div class="icon">💰</div><p>No entries</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ ORDERS ══ -->
+      <div class="page" id="page-orders">
+        <div class="page-title">🧾 Order History</div>
+        <div class="page-sub">View and cancel placed orders. Cancelling restores ingredient stock.</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+          <input type="date" id="ord-filter-from" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 11px;color:var(--text);font-size:12px;outline:none">
+          <span style="color:var(--text3)">to</span>
+          <input type="date" id="ord-filter-to" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 11px;color:var(--text);font-size:12px;outline:none">
+          <button class="btn btn-primary btn-sm" onclick="renderOrders()">Filter</button>
+        </div>
+        <div class="card">
+          <table class="tbl">
+            <thead><tr><th>Order ID</th><th>Date</th><th>Time</th><th>Items</th><th>Payment</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="orders-table"></tbody>
+          </table>
+          <div class="empty-state" id="orders-empty"><div class="icon">🧾</div><p>No orders found</p></div>
+        </div>
+      </div>
+
+      <!-- ══ REPORTS ══ -->
+      <div class="page" id="page-report">
+        <div class="page-title">📊 Reports & Analytics</div>
+        <div class="page-sub">Daily and monthly performance overview.</div>
+        <div class="report-tabs">
+          <button class="report-tab active" onclick="switchReport('daily',this)">📅 Daily</button>
+          <button class="report-tab" onclick="switchReport('monthly',this)">📆 Monthly</button>
+        </div>
+        <div id="report-daily">
+          <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
+            <input type="date" id="rep-daily-date" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 11px;color:var(--text);font-size:13px;outline:none">
+            <button class="btn btn-primary" onclick="renderDailyReport()">Load</button>
+          </div>
+          <div id="daily-report-content"></div>
+        </div>
+        <div id="report-monthly" style="display:none">
+          <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
+            <input type="month" id="rep-month" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 11px;color:var(--text);font-size:13px;outline:none">
+            <button class="btn btn-primary" onclick="renderMonthlyReport()">Load</button>
+          </div>
+          <div id="monthly-report-content"></div>
+        </div>
+      </div>
+
+      <!-- ══ SETTINGS ══ -->
+      <div class="page" id="page-settings">
+        <div class="page-title">⚙️ Settings</div>
+        <div class="page-sub">Connection, tax, and data management.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:900px">
+          <div>
+            <div class="card">
+              <div class="card-title">Google Sheets Connection</div>
+              <div class="field"><label>Apps Script URL</label><input type="url" id="set-api-url" placeholder="https://script.google.com/macros/s/…/exec"></div>
+              <div class="field"><label>Branch</label><input type="text" id="set-branch" readonly style="opacity:.5"></div>
+              <button class="btn btn-primary" onclick="saveAndTestUrl()">Save & Test Connection</button>
+              <div id="conn-result" style="margin-top:10px;font-size:13px"></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Tax Settings</div>
+              <div class="field"><label>Tax Rate (%)</label><input type="number" id="set-tax" value="0" min="0" max="100"></div>
+              <div class="field"><label>Apply Tax</label>
+                <select id="set-tax-apply">
+                  <option value="all">All payment methods</option>
+                  <option value="none">No tax (0%)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" onclick="saveTaxSettings()">💾 Save Tax Settings</button>
+              <div id="tax-saved-msg" style="margin-top:8px;font-size:12px;color:var(--green);display:none">✓ Tax settings saved!</div>
+            </div>
+          </div>
+          <div>
+            <div class="card">
+              <div class="card-title">Export Data (CSV)</div>
+              <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">
+                Export your data as CSV files you can open in Excel or Google Sheets.
+              </p>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <button class="btn btn-outline" onclick="exportCSV('orders')">⬇ Export Orders</button>
+                <button class="btn btn-outline" onclick="exportCSV('ingredients')">⬇ Export Stock</button>
+                <button class="btn btn-outline" onclick="exportCSV('ledger')">⬇ Export Cash Flow</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Danger Zone</div>
+              <button class="btn btn-danger btn-full" onclick="clearLocalData()">🗑️ Clear Local Cache</button>
+              <p style="font-size:11px;color:var(--text3);margin-top:8px">This only clears the browser cache. Google Sheets data is unaffected.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /page-area -->
+  </div><!-- /app-body -->
+</div><!-- /app -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODALS
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- Ingredient Modal -->
+<div class="modal-overlay" id="modal-ingredient">
+  <div class="modal">
+    <div class="modal-title" id="ing-modal-title">Add Ingredient</div>
+    <input type="hidden" id="ing-edit-id">
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input type="text" id="ing-name" placeholder="e.g. Milk"></div>
+      <div class="field"><label>Unit</label>
+        <select id="ing-unit"><option>gram</option><option>kg</option><option>ml</option><option>liter</option><option>pcs</option><option>sachet</option></select>
+      </div>
+      <div class="field"><label>Current Stock</label><input type="number" id="ing-stock" placeholder="0" min="0" step="any"></div>
+      <div class="field"><label>Min Stock (Alert)</label><input type="number" id="ing-min" placeholder="0" min="0" step="any"></div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:10px">
+      <div class="card-title" style="margin-bottom:8px">📦 Pack / Purchase Price</div>
+      <div class="form-grid">
+        <div class="field"><label>Pack Size (in unit above)</label><input type="number" id="ing-pack-size" placeholder="e.g. 1000" min="0" step="any" oninput="calcCPU()"></div>
+        <div class="field"><label>Pack Price (Rp)</label><input type="number" id="ing-pack-price" placeholder="e.g. 15000" min="0" oninput="calcCPU()"></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">
+        Cost per unit: <strong id="calc-cpu" style="color:var(--accent)">—</strong>
+        <span style="color:var(--text3)"> (auto-calculated)</span>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-ingredient')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveIngredient()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restock Modal -->
+<div class="modal-overlay" id="modal-restock">
+  <div class="modal">
+    <div class="modal-title">Restock Ingredient</div>
+    <div style="color:var(--text2);margin-bottom:14px;font-size:13px" id="restock-info"></div>
+    <input type="hidden" id="restock-id">
+    <div class="form-grid">
+      <div class="field"><label>Packs Purchased</label><input type="number" id="restock-packs" placeholder="0" min="0" oninput="calcRestockUnits()"></div>
+      <div class="field"><label>OR enter units directly</label><input type="number" id="restock-units" placeholder="0" min="0" step="any"></div>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:4px" id="restock-hint"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-restock')">Cancel</button>
+      <button class="btn btn-primary" onclick="doRestock()">Add Stock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Menu Modal -->
+<div class="modal-overlay" id="modal-menu">
+  <div class="modal modal-lg">
+    <div class="modal-title" id="menu-modal-title">Add Menu Item</div>
+    <input type="hidden" id="menu-edit-id">
+    <div class="form-grid">
+      <div class="field"><label>Item Name</label><input type="text" id="menu-name" placeholder="e.g. Cappuccino"></div>
+      <div class="field"><label>Category</label><input type="text" id="menu-cat" placeholder="e.g. Coffee" list="cat-datalist"></div>
+      <datalist id="cat-datalist"></datalist>
+    </div>
+    <div class="form-grid">
+      <div class="field" style="max-width:150px"><label>Icon (emoji)</label><input type="text" id="menu-icon" placeholder="☕" maxlength="4"></div>
+      <div class="field">
+        <label>Product Image</label>
+        <div class="img-upload-area" id="menu-img-area" onclick="document.getElementById('menu-img-input').click()">
+          <div id="menu-img-preview"><span style="font-size:24px">📷</span><br><span style="font-size:11px;color:var(--text3)">Click to upload image</span></div>
+          <input type="file" id="menu-img-input" accept="image/*" onchange="handleMenuImage(this)">
+        </div>
+        <input type="hidden" id="menu-img-data">
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <input type="url" class="form-input" id="menu-img-url" placeholder="Or paste image URL" style="font-size:11px;padding:5px 8px;flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);outline:none">
+          <button class="btn btn-outline btn-sm" onclick="clearMenuImage()">Clear</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-title" style="margin-top:6px">💳 Prices by Payment Method</div>
+    <div class="price-grid" style="margin-bottom:12px">
+      <div class="field"><label>💵 Cash (Rp)</label><input type="number" id="menu-p-cash" placeholder="0"></div>
+      <div class="field"><label>🟦 DANA (Rp)</label><input type="number" id="menu-p-dana" placeholder="0"></div>
+      <div class="field"><label>🟢 GoFood (Rp)</label><input type="number" id="menu-p-gofood" placeholder="0"></div>
+      <div class="field"><label>🟠 ShopeeFood (Rp)</label><input type="number" id="menu-p-shopee" placeholder="0"></div>
+      <div class="field"><label>🟩 Grab (Rp)</label><input type="number" id="menu-p-grab" placeholder="0"></div>
+    </div>
+    <div class="card-title">🧪 Ingredients Used per Order</div>
+    <div id="menu-ing-rows"></div>
+    <button class="btn btn-outline btn-sm" onclick="addIngRow()" style="margin-top:6px">+ Add Ingredient</button>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-menu')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMenuItem()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Order Success Modal -->
+<div class="modal-overlay" id="modal-success">
+  <div class="modal" style="text-align:center;padding:34px">
+    <div style="font-size:50px;margin-bottom:10px">✅</div>
+    <div class="modal-title" style="text-align:center;margin-bottom:3px">Order Placed!</div>
+    <div id="suc-id" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);margin-bottom:14px"></div>
+    <div id="suc-total" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:700;color:var(--accent);margin-bottom:4px"></div>
+    <div id="suc-pay" style="font-size:13px;color:var(--text2);margin-bottom:20px"></div>
+    <div id="suc-change-box" style="background:var(--green-m);border:1px solid rgba(114,196,126,.3);border-radius:var(--r-sm);padding:11px;margin-bottom:18px;display:none">
+      <div style="font-size:10px;color:var(--green);margin-bottom:3px;font-family:'DM Mono',monospace;text-transform:uppercase">Change</div>
+      <div id="suc-change" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--green)"></div>
+    </div>
+    <button class="btn btn-primary btn-lg" onclick="closeModal('modal-success');clearOrder()">New Order</button>
+  </div>
+</div>
+
+<!-- Cancel Order Modal -->
+<div class="modal-overlay" id="modal-cancel">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">❌ Cancel Order?</div>
+    <input type="hidden" id="cancel-order-id">
+    <div style="color:var(--text2);font-size:13px;margin-bottom:8px" id="cancel-info"></div>
+    <div style="background:var(--accent-m);border:1px solid rgba(240,160,48,.3);border-radius:var(--r-sm);padding:11px;font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:14px">
+      ⚠️ Cancelling will restore all deducted ingredient stock and reverse the ledger entry.
+    </div>
+    <div class="field"><label>Reason (optional)</label><input type="text" id="cancel-reason" placeholder="e.g. customer changed mind"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-cancel')">Keep Order</button>
+      <button class="btn btn-danger" onclick="confirmCancel()">Yes, Cancel It</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   APP STATE
+   ═══════════════════════════════════════════════════════════ */
+const APP = {
+  scriptUrl: localStorage.getItem('mb_script_url') || '',
+  branch: '', password: '', isDemo: false,
+  // Data
+  menu: [], ingredients: [], recipes: [],
+  orders: [], orderItems: [], ledger: [], stockLog: [],
+  // POS
+  currentOrder: [], selectedPayment: 'cash',
+  activeCat: 'All',
+  // Settings (persisted)
+  taxRate: 0, taxApply: 'all',
+  // UI state
+  ledgerType: 'Income',
+  _ordering: false, // prevent double-click
+};
+
+/* ═══════════════════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════════════════ */
+function rp(n) { return 'Rp ' + Math.round(Number(n)||0).toLocaleString('id-ID'); }
+function todayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function nowTime() { const d = new Date(); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0'); }
+function thisMonth() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+function uid(p) { return p + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2,3).toUpperCase(); }
+
+/* ═══════════════════════════════════════════════════════════
+   LOCAL STORAGE
+   ═══════════════════════════════════════════════════════════ */
+function lsKey() { return 'mb_data_' + APP.branch; }
+function saveLocal() {
+  localStorage.setItem(lsKey(), JSON.stringify({
+    menu:APP.menu, ingredients:APP.ingredients, recipes:APP.recipes,
+    orders:APP.orders, orderItems:APP.orderItems, ledger:APP.ledger, stockLog:APP.stockLog
+  }));
+}
+function loadLocal() {
+  try {
+    const d = JSON.parse(localStorage.getItem(lsKey()) || '{}');
+    APP.menu = d.menu || []; APP.ingredients = d.ingredients || [];
+    APP.recipes = d.recipes || []; APP.orders = d.orders || [];
+    APP.orderItems = d.orderItems || []; APP.ledger = d.ledger || [];
+    APP.stockLog = d.stockLog || [];
+  } catch(e) {}
+}
+function loadTaxSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('mb_tax') || '{}');
+    if (s.taxRate !== undefined) APP.taxRate = s.taxRate;
+    if (s.taxApply !== undefined) APP.taxApply = s.taxApply;
+  } catch(e) {}
+}
+function saveTaxToLS() {
+  localStorage.setItem('mb_tax', JSON.stringify({ taxRate: APP.taxRate, taxApply: APP.taxApply }));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GOOGLE SHEETS API — GET + ?payload= (NO CORS ISSUES)
+   ═══════════════════════════════════════════════════════════ */
+async function api(action, data) {
+  if (!APP.scriptUrl || APP.isDemo) return null; // local-only mode
+  setSyncBusy();
+  const payload = JSON.stringify({
+    action: action,
+    branch: APP.branch,
+    password: APP.password,
+    data: data || {}
+  });
+  try {
+    // KEY FIX: Use GET with ?payload= to completely bypass CORS preflight
+    const url = APP.scriptUrl + '?payload=' + encodeURIComponent(payload);
+    const resp = await fetch(url);
+    const json = await resp.json();
+    setSyncOk();
+    hideBanner();
+    if (!json.ok) {
+      console.error('API error [' + action + ']:', json.error);
+      toast('Sync error: ' + (json.error || 'Unknown'), 'error');
+    }
+    return json;
+  } catch (err) {
+    console.warn('Fetch error [' + action + ']:', err);
+    setSyncErr();
+    return null;
+  }
+}
+
+/** Fire-and-forget API call with error toast — use for background cloud syncs */
+function apiSync(action, data) {
+  api(action, data).then(res => {
+    if (res && !res.ok) console.warn('Cloud sync failed for', action);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SYNC STATUS
+   ═══════════════════════════════════════════════════════════ */
+function setSyncOk()   { document.getElementById('sync-dot').className='sync-dot ok';   document.getElementById('sync-label').textContent=APP.scriptUrl?'Synced':'Local'; }
+function setSyncBusy() { document.getElementById('sync-dot').className='sync-dot busy'; document.getElementById('sync-label').textContent='Syncing…'; }
+function setSyncErr()  { document.getElementById('sync-dot').className='sync-dot err';  document.getElementById('sync-label').textContent='Offline'; showBanner(); }
+function showBanner()  { document.getElementById('offline-banner').classList.add('show'); }
+function hideBanner()  { document.getElementById('offline-banner').classList.remove('show'); }
+
+/* ═══════════════════════════════════════════════════════════
+   LOGIN
+   ═══════════════════════════════════════════════════════════ */
+async function doLogin() {
+  const branch = document.getElementById('login-branch').value.trim().toLowerCase();
+  const pass = document.getElementById('login-password').value;
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-error');
+  if (!branch || !pass) { err.textContent = 'Enter branch name and password'; return; }
+  APP.branch = branch; APP.password = pass; APP.isDemo = false;
+  btn.disabled = true; btn.innerHTML = '<div class="spinner"></div>';
+
+  if (APP.scriptUrl) {
+    const res = await api('syncAll');
+    btn.disabled = false; btn.textContent = 'Sign In';
+    if (res && res.ok) {
+      applyRemote(res);
+      localStorage.setItem('mb_session', JSON.stringify({ branch, password: pass }));
+      launchApp();
+    } else if (res && !res.ok) {
+      err.textContent = res.error || 'Login failed';
+    } else {
+      // Network error — allow login with local data
+      localStorage.setItem('mb_session', JSON.stringify({ branch, password: pass }));
+      loadLocal();
+      launchApp();
+    }
+  } else {
+    btn.disabled = false; btn.textContent = 'Sign In';
+    localStorage.setItem('mb_session', JSON.stringify({ branch, password: pass }));
+    loadLocal();
+    launchApp();
+  }
+}
+
+function enterDemo() {
+  APP.branch = 'demo'; APP.password = ''; APP.isDemo = true;
+  localStorage.setItem('mb_session', JSON.stringify({ branch:'demo', isDemo:true }));
+  loadLocal();
+  launchApp();
+}
+
+function logout() { localStorage.removeItem('mb_session'); location.reload(); }
+
+function launchApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('branch-label').textContent = 'Branch: ' + APP.branch.toUpperCase();
+  document.getElementById('set-api-url').value = APP.scriptUrl;
+  document.getElementById('set-branch').value = APP.branch;
+  // Dates
+  document.getElementById('rep-daily-date').value = todayStr();
+  document.getElementById('rep-month').value = thisMonth();
+  document.getElementById('led-date').value = todayStr();
+  document.getElementById('ord-filter-from').value = todayStr();
+  document.getElementById('ord-filter-to').value = todayStr();
+  // Tax
+  loadTaxSettings();
+  applyTaxUI();
+  // Sync status
+  if (!APP.scriptUrl && !APP.isDemo) { document.getElementById('sync-label').textContent = 'Local'; }
+  hideBanner();
+  renderAll();
+}
+
+function normalizeDate(v) {
+  // Handle ISO datetime strings like "2026-03-30T00:00:00.000Z" → "2026-03-30"
+  if (typeof v === 'string' && v.length > 10 && v.includes('T')) return v.split('T')[0];
+  return v;
+}
+function normalizeDates(arr) {
+  arr.forEach(obj => { if (obj.date) obj.date = normalizeDate(obj.date); });
+}
+
+// Dedicated image storage — separate from main data so sync can never erase them
+function saveMenuImages() {
+  const imgs = {};
+  APP.menu.forEach(m => { if (m.image && m.image.startsWith('data:')) imgs[m.id] = m.image; });
+  localStorage.setItem('mb_menu_images_' + APP.branch, JSON.stringify(imgs));
+}
+function loadMenuImages() {
+  try { return JSON.parse(localStorage.getItem('mb_menu_images_' + APP.branch) || '{}'); } catch(e) { return {}; }
+}
+
+function applyRemote(res) {
+  // Load images from dedicated storage (never lost during sync)
+  const savedImages = loadMenuImages();
+  // Also grab any in-memory images
+  APP.menu.forEach(m => { if (m.image && m.image.startsWith('data:')) savedImages[m.id] = m.image; });
+
+  APP.menu = res.menu || []; APP.ingredients = res.ingredients || [];
+  APP.recipes = res.recipes || []; APP.orders = res.orders || [];
+  APP.orderItems = res.orderItems || []; APP.ledger = res.ledger || [];
+  APP.stockLog = res.stockLog || [];
+
+  // Normalize all date fields to yyyy-MM-dd (in case cloud returns ISO datetime)
+  normalizeDates(APP.orders);
+  normalizeDates(APP.ledger);
+  normalizeDates(APP.stockLog);
+
+  // Restore local images — cloud has empty string, local has base64
+  APP.menu.forEach(m => { if (!m.image && savedImages[m.id]) m.image = savedImages[m.id]; });
+
+  saveLocal();
+  saveMenuImages(); // persist images separately
+}
+
+async function fullSync() {
+  const res = await api('syncAll');
+  if (res && res.ok) { applyRemote(res); renderAll(); toast('Synced!','success'); }
+  else if (!res) toast('Sync failed — offline','error');
+}
+
+function renderAll() {
+  renderMenuGrid(); renderStockTable(); renderMenuTable();
+  renderCogs(); renderLedger(); renderOrders();
+  checkLowStock();
+}
+
+// Restore session on load — pre-fill login but always show sign-in screen
+(function() {
+  const s = localStorage.getItem('mb_session');
+  if (s) {
+    try {
+      const sess = JSON.parse(s);
+      APP.scriptUrl = localStorage.getItem('mb_script_url') || '';
+      // Pre-fill the login form for convenience, but don't auto-enter
+      if (sess.branch) document.getElementById('login-branch').value = sess.branch;
+      if (sess.password) document.getElementById('login-password').value = sess.password;
+    } catch(e) {}
+  }
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════════════════════ */
+function gotoPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  // Refresh data on navigate
+  if (id === 'cogs') renderCogs();
+  if (id === 'orders') renderOrders();
+  if (id === 'ledger') renderLedger();
+  if (id === 'stock') renderStockTable();
+  if (id === 'report') { renderDailyReport(); renderMonthlyReport(); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   POS / CASHIER
+   ═══════════════════════════════════════════════════════════ */
+function selectPay(btn, method) {
+  document.querySelectorAll('.pay-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  APP.selectedPayment = method;
+  document.getElementById('cash-field').style.display = method === 'cash' ? 'block' : 'none';
+  // Update prices in current order to match new payment method
+  APP.currentOrder.forEach(o => {
+    const m = APP.menu.find(x => x.id === o.menu_id);
+    if (m) o.price = parseFloat(m['price_' + method] || m.price_cash || 0);
+  });
+  renderMenuGrid();
+  renderOrder();
+}
+
+function renderMenuGrid() {
+  const pay = APP.selectedPayment;
+  const grid = document.getElementById('menu-grid');
+  const tabs = document.getElementById('cat-tabs');
+  const active = APP.menu.filter(m => m.active !== false && m.active !== 'false');
+  if (!active.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="icon">🍽️</div><p>No menu items yet</p></div>';
+    tabs.innerHTML = '';
+    return;
+  }
+  const cats = ['All', ...new Set(active.map(m => m.category).filter(Boolean))];
+  tabs.innerHTML = cats.map(c => `<button class="cat-tab ${c===APP.activeCat?'active':''}" onclick="APP.activeCat='${c}';renderMenuGrid()">${c}</button>`).join('');
+  const filtered = APP.activeCat === 'All' ? active : active.filter(m => m.category === APP.activeCat);
+  grid.innerHTML = filtered.map(m => {
+    const price = parseFloat(m['price_' + pay] || m.price_cash || 0);
+    const hasImg = m.image && m.image.length > 5;
+    return `<div class="menu-card" onclick="addToOrder('${m.id}')">
+      ${hasImg ? `<img class="menu-card-img" src="${m.image}" alt="${m.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="menu-icon" style="display:none">${m.icon || '☕'}</div>` : `<div class="menu-icon">${m.icon || '☕'}</div>`}
+      <div class="menu-name">${m.name}</div>
+      <div class="menu-price">${rp(price)}</div>
+    </div>`;
+  }).join('');
+}
+
+function addToOrder(menuId) {
+  const m = APP.menu.find(x => x.id === menuId);
+  if (!m) return;
+  const price = parseFloat(m['price_' + APP.selectedPayment] || m.price_cash || 0);
+  const ex = APP.currentOrder.find(o => o.menu_id === menuId);
+  if (ex) ex.qty++;
+  else APP.currentOrder.push({ menu_id: menuId, menu_name: m.name, icon: m.icon || '☕', price, qty: 1 });
+  renderOrder();
+}
+
+function renderOrder() {
+  const list = document.getElementById('order-list');
+  if (!APP.currentOrder.length) {
+    list.innerHTML = '<div class="empty-state" style="padding:24px 10px"><div class="icon">🛒</div><p>Add items</p></div>';
+    updateTotals(); return;
+  }
+  list.innerHTML = APP.currentOrder.map(o => `
+    <div class="order-item">
+      <div class="order-item-info">
+        <div class="order-item-name">${o.icon} ${o.menu_name}</div>
+        <div class="order-item-price">${rp(o.price)} × ${o.qty} = ${rp(o.price * o.qty)}</div>
+      </div>
+      <div class="qty-ctrl">
+        <button class="qty-btn" onclick="chQty('${o.menu_id}',-1)">−</button>
+        <span class="qty-num">${o.qty}</span>
+        <button class="qty-btn" onclick="chQty('${o.menu_id}',1)">+</button>
+      </div>
+    </div>`).join('');
+  updateTotals();
+}
+
+function chQty(menuId, d) {
+  const i = APP.currentOrder.findIndex(o => o.menu_id === menuId);
+  if (i < 0) return;
+  APP.currentOrder[i].qty += d;
+  if (APP.currentOrder[i].qty <= 0) APP.currentOrder.splice(i, 1);
+  renderOrder();
+}
+
+function clearOrder() {
+  APP.currentOrder = [];
+  document.getElementById('order-note').value = '';
+  document.getElementById('cash-input').value = '';
+  document.getElementById('change-box').style.display = 'none';
+  renderOrder();
+}
+
+function updateTotals() {
+  const sub = APP.currentOrder.reduce((s, o) => s + o.price * o.qty, 0);
+  const taxPct = APP.taxApply === 'all' ? APP.taxRate : 0;
+  const tax = Math.round(sub * taxPct / 100);
+  document.getElementById('pos-sub').textContent = rp(sub);
+  document.getElementById('pos-tax').textContent = rp(tax);
+  document.getElementById('pos-grand').textContent = rp(sub + tax);
+  document.getElementById('tax-label').textContent = APP.taxApply === 'none' ? 'Tax (0%)' : `Tax (${APP.taxRate}%)`;
+  calcChange();
+}
+
+function calcChange() {
+  const sub = APP.currentOrder.reduce((s, o) => s + o.price * o.qty, 0);
+  const taxPct = APP.taxApply === 'all' ? APP.taxRate : 0;
+  const grand = sub + Math.round(sub * taxPct / 100);
+  const cash = parseFloat(document.getElementById('cash-input').value) || 0;
+  const box = document.getElementById('change-box');
+  if (APP.selectedPayment === 'cash' && cash > 0) {
+    box.style.display = 'block';
+    document.getElementById('change-val').textContent = rp(Math.max(0, cash - grand));
+  } else { box.style.display = 'none'; }
+}
+
+async function placeOrder() {
+  if (!APP.currentOrder.length) { toast('Add items first!', 'error'); return; }
+  // DOUBLE-CLICK PROTECTION
+  if (APP._ordering) return;
+  APP._ordering = true;
+  const btn = document.getElementById('pos-submit-btn');
+  btn.disabled = true; btn.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const sub = APP.currentOrder.reduce((s, o) => s + o.price * o.qty, 0);
+    const taxPct = APP.taxApply === 'all' ? APP.taxRate : 0;
+    const tax = Math.round(sub * taxPct / 100);
+    const total = sub + tax;
+    const orderId = uid('ORD');
+    const date = todayStr();
+    const time = nowTime();
+    const note = document.getElementById('order-note').value.trim();
+    const items = APP.currentOrder.map(o => ({
+      menu_id: o.menu_id, menu_name: o.menu_name, qty: o.qty, price: o.price
+    }));
+
+    // For cash: check sufficient
+    if (APP.selectedPayment === 'cash') {
+      const cash = parseFloat(document.getElementById('cash-input').value) || 0;
+      if (cash > 0 && cash < total) { toast('Insufficient cash!', 'error'); return; }
+    }
+
+    // 1. Save locally FIRST (instant, always works)
+    APP.orders.push({ id: orderId, date, time, payment: APP.selectedPayment, total, branch: APP.branch, status: 'Active', note, cancel_reason: '', cancelled_at: '' });
+    items.forEach(it => {
+      APP.orderItems.push({ order_id: orderId, menu_id: it.menu_id, menu_name: it.menu_name, qty: it.qty, price: it.price, payment_type: APP.selectedPayment });
+    });
+
+    // Deduct stock locally
+    items.forEach(it => {
+      const recs = APP.recipes.filter(r => String(r.menu_id) === String(it.menu_id));
+      recs.forEach(rec => {
+        const ing = APP.ingredients.find(g => String(g.id) === String(rec.ingredient_id));
+        if (ing) {
+          const usage = parseFloat(rec.amount) * it.qty;
+          ing.current_stock = parseFloat(ing.current_stock) - usage;
+          APP.stockLog.push({ id: uid('STK'), date: new Date().toISOString(), ingredient_id: ing.id, ingredient_name: ing.name, change: -usage, reason: 'Order ' + orderId, order_id: orderId });
+        }
+      });
+    });
+
+    // Add ledger income locally
+    APP.ledger.push({ id: uid('LED'), date, time, type: 'Income', category: 'Sales', description: 'Order ' + orderId + ' (' + APP.selectedPayment + ')', amount: total, payment: APP.selectedPayment, order_id: orderId });
+
+    saveLocal();
+    checkLowStock();
+
+    // 2. Send to Google Sheets in background — include local orderId so IDs match
+    apiSync('placeOrder', { orderId, date, time, payment: APP.selectedPayment, total, items, note });
+
+    // 3. Show success
+    document.getElementById('suc-id').textContent = 'Order ID: ' + orderId;
+    document.getElementById('suc-total').textContent = rp(total);
+    document.getElementById('suc-pay').textContent = 'Paid via ' + APP.selectedPayment.toUpperCase();
+    const cash = parseFloat(document.getElementById('cash-input').value) || 0;
+    if (APP.selectedPayment === 'cash' && cash > total) {
+      document.getElementById('suc-change-box').style.display = 'block';
+      document.getElementById('suc-change').textContent = rp(cash - total);
+    } else {
+      document.getElementById('suc-change-box').style.display = 'none';
+    }
+    openModal('modal-success');
+
+  } finally {
+    btn.disabled = false; btn.innerHTML = '✓ Place Order';
+    APP._ordering = false;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INGREDIENTS / STOCK
+   ═══════════════════════════════════════════════════════════ */
+function renderStockTable() {
+  const tbody = document.getElementById('stock-table');
+  const empty = document.getElementById('stock-empty');
+  if (!APP.ingredients.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = APP.ingredients.map(i => {
+    const stock = parseFloat(i.current_stock || 0);
+    const min = parseFloat(i.min_stock || 0);
+    const max = Math.max(min * 3, 1);
+    const pct = Math.min(100, (stock / max) * 100);
+    const col = stock <= min ? 'var(--red)' : stock <= min * 1.5 ? 'var(--accent)' : 'var(--green)';
+    const st = stock <= min && min > 0 ? '<span class="badge badge-red">Low</span>' : stock <= min * 1.5 && min > 0 ? '<span class="badge badge-accent">Warning</span>' : '<span class="badge badge-green">OK</span>';
+    const ps = parseFloat(i.pack_size || 0);
+    const pp = parseFloat(i.pack_price || 0);
+    const cpu = parseFloat(i.cost_per_unit || 0);
+    return `<tr>
+      <td><strong>${i.name}</strong></td>
+      <td><span style="font-family:'DM Mono',monospace">${stock.toLocaleString('id-ID')}</span><div class="stock-bar"><div class="stock-bar-fill" style="width:${pct}%;background:${col}"></div></div></td>
+      <td>${i.unit}</td>
+      <td style="font-family:'DM Mono',monospace">${min}</td>
+      <td style="font-family:'DM Mono',monospace">${ps || '—'}</td>
+      <td style="font-family:'DM Mono',monospace">${pp ? rp(pp) : '—'}</td>
+      <td style="font-family:'DM Mono',monospace">${cpu ? rp(cpu) + '/' + i.unit : '—'}</td>
+      <td>${st}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-outline btn-sm" onclick="openRestock('${i.id}')">+ Restock</button>
+        <button class="btn btn-outline btn-sm" onclick="openEditIngredient('${i.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteIngredient('${i.id}')">✕</button>
+      </td></tr>`;
+  }).join('');
+}
+
+function checkLowStock() {
+  const low = APP.ingredients.filter(i => parseFloat(i.current_stock || 0) <= parseFloat(i.min_stock || 0) && parseFloat(i.min_stock || 0) > 0);
+  const alert = document.getElementById('low-stock-alert');
+  const list = document.getElementById('low-stock-list');
+  if (low.length) {
+    alert.style.display = 'block';
+    list.innerHTML = low.map(i => `<span class="badge badge-red" style="margin:2px">${i.name}: ${parseFloat(i.current_stock).toFixed(1)} ${i.unit}</span>`).join('');
+  } else { alert.style.display = 'none'; }
+}
+
+function calcCPU() {
+  const ps = parseFloat(document.getElementById('ing-pack-size').value) || 0;
+  const pp = parseFloat(document.getElementById('ing-pack-price').value) || 0;
+  document.getElementById('calc-cpu').textContent = (ps > 0 && pp > 0) ? rp(pp / ps) + ' per unit' : '—';
+}
+
+function openAddIngredient() {
+  document.getElementById('ing-modal-title').textContent = 'Add Ingredient';
+  document.getElementById('ing-edit-id').value = '';
+  ['ing-name','ing-stock','ing-min','ing-pack-size','ing-pack-price'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ing-unit').value = 'gram';
+  document.getElementById('calc-cpu').textContent = '—';
+  openModal('modal-ingredient');
+}
+
+function openEditIngredient(id) {
+  const i = APP.ingredients.find(x => x.id === id); if (!i) return;
+  document.getElementById('ing-modal-title').textContent = 'Edit Ingredient';
+  document.getElementById('ing-edit-id').value = i.id;
+  document.getElementById('ing-name').value = i.name;
+  document.getElementById('ing-unit').value = i.unit;
+  document.getElementById('ing-stock').value = i.current_stock;
+  document.getElementById('ing-min').value = i.min_stock;
+  document.getElementById('ing-pack-size').value = i.pack_size || '';
+  document.getElementById('ing-pack-price').value = i.pack_price || '';
+  calcCPU();
+  openModal('modal-ingredient');
+}
+
+async function saveIngredient() {
+  const name = document.getElementById('ing-name').value.trim();
+  if (!name) { toast('Enter ingredient name', 'error'); return; }
+  const ps = parseFloat(document.getElementById('ing-pack-size').value) || 0;
+  const pp = parseFloat(document.getElementById('ing-pack-price').value) || 0;
+  const data = {
+    id: document.getElementById('ing-edit-id').value || uid('ING'),
+    name,
+    unit: document.getElementById('ing-unit').value,
+    current_stock: parseFloat(document.getElementById('ing-stock').value) || 0,
+    min_stock: parseFloat(document.getElementById('ing-min').value) || 0,
+    pack_size: ps, pack_price: pp,
+    cost_per_unit: ps > 0 && pp > 0 ? pp / ps : 0
+  };
+  const idx = APP.ingredients.findIndex(i => i.id === data.id);
+  if (idx >= 0) APP.ingredients[idx] = data; else APP.ingredients.push(data);
+  saveLocal();
+  apiSync('saveIngredient', data);
+  closeModal('modal-ingredient');
+  renderStockTable(); checkLowStock();
+  toast('Saved!', 'success');
+}
+
+async function deleteIngredient(id) {
+  if (!confirm('Delete this ingredient?')) return;
+  APP.ingredients = APP.ingredients.filter(i => i.id !== id);
+  APP.recipes = APP.recipes.filter(r => String(r.ingredient_id) !== String(id));
+  saveLocal();
+  apiSync('deleteIngredient', { id });
+  renderStockTable(); renderMenuTable(); checkLowStock();
+  toast('Deleted', 'success');
+}
+
+function openRestock(id) {
+  const i = APP.ingredients.find(x => x.id === id); if (!i) return;
+  document.getElementById('restock-id').value = id;
+  document.getElementById('restock-info').textContent = i.name + ' — Current: ' + parseFloat(i.current_stock).toFixed(1) + ' ' + i.unit;
+  document.getElementById('restock-packs').value = '';
+  document.getElementById('restock-units').value = '';
+  document.getElementById('restock-hint').textContent = i.pack_size ? '1 pack = ' + i.pack_size + ' ' + i.unit : '(No pack size set — enter units directly)';
+  openModal('modal-restock');
+}
+
+function calcRestockUnits() {
+  const id = document.getElementById('restock-id').value;
+  const ing = APP.ingredients.find(i => i.id === id);
+  if (!ing || !ing.pack_size) return;
+  const packs = parseFloat(document.getElementById('restock-packs').value) || 0;
+  document.getElementById('restock-units').value = packs * parseFloat(ing.pack_size);
+}
+
+async function doRestock() {
+  const id = document.getElementById('restock-id').value;
+  const units = parseFloat(document.getElementById('restock-units').value) || 0;
+  if (units <= 0) { toast('Enter a valid amount', 'error'); return; }
+  const ing = APP.ingredients.find(i => i.id === id);
+  if (ing) {
+    ing.current_stock = parseFloat(ing.current_stock) + units;
+    APP.stockLog.push({ id: uid('STK'), date: new Date().toISOString(), ingredient_id: id, ingredient_name: ing.name, change: units, reason: 'Restock', order_id: '' });
+    saveLocal();
+  }
+  apiSync('restockIngredient', { id, amount: units, name: ing ? ing.name : '' });
+  closeModal('modal-restock');
+  renderStockTable(); checkLowStock();
+  toast('+' + units + ' ' + (ing ? ing.unit : '') + ' added', 'success');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MENU MANAGEMENT
+   ═══════════════════════════════════════════════════════════ */
+function renderMenuTable() {
+  const tbody = document.getElementById('menu-table');
+  const empty = document.getElementById('menu-empty');
+  const active = APP.menu.filter(m => m.active !== false && m.active !== 'false');
+  if (!active.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = active.map(m => {
+    const recs = APP.recipes.filter(r => String(r.menu_id) === String(m.id));
+    const ings = recs.map(r => r.ingredient_name + ' ' + r.amount + r.unit).join(', ');
+    return `<tr>
+      <td><span style="font-size:16px">${m.icon || '☕'}</span> <strong>${m.name}</strong></td>
+      <td><span class="badge badge-blue">${m.category || '—'}</span></td>
+      <td style="font-family:'DM Mono',monospace">${rp(m.price_cash || 0)}</td>
+      <td style="font-family:'DM Mono',monospace">${rp(m.price_dana || 0)}</td>
+      <td style="font-family:'DM Mono',monospace">${rp(m.price_gofood || 0)}</td>
+      <td style="font-family:'DM Mono',monospace">${rp(m.price_shopee || 0)}</td>
+      <td style="font-family:'DM Mono',monospace">${rp(m.price_grab || 0)}</td>
+      <td style="font-size:11px;color:var(--text3)">${ings || '—'}</td>
+      <td><button class="btn btn-outline btn-sm" onclick="openEditMenu('${m.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteMenuItem('${m.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function handleMenuImage(input) {
+  const file = input.files[0]; if (!file) return;
+  // Resize to max 200px thumbnail to keep data small
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const maxW = 200, maxH = 200;
+      let w = img.width, h = img.height;
+      if (w > maxW) { h = h * maxW / w; w = maxW; }
+      if (h > maxH) { w = w * maxH / h; h = maxH; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      document.getElementById('menu-img-data').value = dataUrl;
+      document.getElementById('menu-img-url').value = '';
+      document.getElementById('menu-img-preview').innerHTML = `<img src="${dataUrl}" alt="preview">`;
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearMenuImage() {
+  document.getElementById('menu-img-data').value = '';
+  document.getElementById('menu-img-url').value = '';
+  document.getElementById('menu-img-input').value = '';
+  document.getElementById('menu-img-preview').innerHTML = '<span style="font-size:24px">📷</span><br><span style="font-size:11px;color:var(--text3)">Click to upload image</span>';
+}
+
+function getMenuImage() {
+  // Priority: uploaded file (base64) > pasted URL
+  return document.getElementById('menu-img-data').value || document.getElementById('menu-img-url').value.trim() || '';
+}
+
+function setMenuImagePreview(src) {
+  if (src && src.length > 5) {
+    document.getElementById('menu-img-preview').innerHTML = `<img src="${src}" alt="preview">`;
+    if (src.startsWith('data:')) document.getElementById('menu-img-data').value = src;
+    else document.getElementById('menu-img-url').value = src;
+  } else {
+    clearMenuImage();
+  }
+}
+
+function openAddMenu() {
+  document.getElementById('menu-modal-title').textContent = 'Add Menu Item';
+  document.getElementById('menu-edit-id').value = '';
+  ['menu-name','menu-cat','menu-icon','menu-p-cash','menu-p-dana','menu-p-gofood','menu-p-shopee','menu-p-grab'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('menu-ing-rows').innerHTML = '';
+  clearMenuImage();
+  const cats = [...new Set(APP.menu.map(m => m.category).filter(Boolean))];
+  document.getElementById('cat-datalist').innerHTML = cats.map(c => `<option value="${c}">`).join('');
+  openModal('modal-menu');
+}
+
+function openEditMenu(id) {
+  const m = APP.menu.find(x => x.id === id); if (!m) return;
+  document.getElementById('menu-modal-title').textContent = 'Edit Menu Item';
+  document.getElementById('menu-edit-id').value = m.id;
+  document.getElementById('menu-name').value = m.name;
+  document.getElementById('menu-cat').value = m.category || '';
+  document.getElementById('menu-icon').value = m.icon || '';
+  document.getElementById('menu-p-cash').value = m.price_cash || '';
+  document.getElementById('menu-p-dana').value = m.price_dana || '';
+  document.getElementById('menu-p-gofood').value = m.price_gofood || '';
+  document.getElementById('menu-p-shopee').value = m.price_shopee || '';
+  document.getElementById('menu-p-grab').value = m.price_grab || '';
+  document.getElementById('menu-ing-rows').innerHTML = '';
+  setMenuImagePreview(m.image || '');
+  const recs = APP.recipes.filter(r => String(r.menu_id) === String(m.id));
+  recs.forEach(r => addIngRow(r.ingredient_id, r.amount));
+  const cats = [...new Set(APP.menu.map(m => m.category).filter(Boolean))];
+  document.getElementById('cat-datalist').innerHTML = cats.map(c => `<option value="${c}">`).join('');
+  openModal('modal-menu');
+}
+
+function addIngRow(ingId, amount) {
+  const c = document.getElementById('menu-ing-rows');
+  const row = document.createElement('div');
+  row.className = 'ing-row';
+  const opts = APP.ingredients.map(i => `<option value="${i.id}" ${i.id === ingId ? 'selected' : ''}>${i.name} (${i.unit})</option>`).join('');
+  row.innerHTML = `<select>${opts || '<option>No ingredients</option>'}</select>
+    <input type="number" placeholder="Amount" value="${amount || ''}" min="0" step="any">
+    <button onclick="this.parentElement.remove()" style="background:var(--red-m);border:1px solid var(--red);color:var(--red);border-radius:var(--r-sm);padding:5px 9px;cursor:pointer;font-size:12px;flex-shrink:0">✕</button>`;
+  c.appendChild(row);
+}
+
+async function saveMenuItem() {
+  const name = document.getElementById('menu-name').value.trim();
+  if (!name) { toast('Enter item name', 'error'); return; }
+  const editId = document.getElementById('menu-edit-id').value;
+  const data = {
+    id: editId || uid('MNU'),
+    name,
+    category: document.getElementById('menu-cat').value.trim(),
+    icon: document.getElementById('menu-icon').value.trim() || '☕',
+    image: getMenuImage(),
+    price_cash: parseFloat(document.getElementById('menu-p-cash').value) || 0,
+    price_dana: parseFloat(document.getElementById('menu-p-dana').value) || 0,
+    price_gofood: parseFloat(document.getElementById('menu-p-gofood').value) || 0,
+    price_shopee: parseFloat(document.getElementById('menu-p-shopee').value) || 0,
+    price_grab: parseFloat(document.getElementById('menu-p-grab').value) || 0,
+    active: true
+  };
+  // Collect ingredient rows
+  const newRecipes = [];
+  document.getElementById('menu-ing-rows').querySelectorAll('.ing-row').forEach(row => {
+    const sel = row.querySelector('select');
+    const inp = row.querySelector('input');
+    if (sel && inp && inp.value) {
+      const ing = APP.ingredients.find(i => i.id === sel.value);
+      newRecipes.push({ menu_id: data.id, ingredient_id: sel.value, ingredient_name: ing ? ing.name : '', amount: parseFloat(inp.value) || 0, unit: ing ? ing.unit : '' });
+    }
+  });
+
+  // Update local
+  const idx = APP.menu.findIndex(m => m.id === data.id);
+  if (idx >= 0) APP.menu[idx] = data; else APP.menu.push(data);
+  APP.recipes = APP.recipes.filter(r => String(r.menu_id) !== String(data.id));
+  APP.recipes.push(...newRecipes);
+  saveLocal();
+  saveMenuImages(); // persist images separately so sync never loses them
+
+  // Send to cloud — strip base64 images (too large for GET URL), keep URL images
+  const cloudData = Object.assign({}, data);
+  if (cloudData.image && cloudData.image.startsWith('data:')) {
+    cloudData.image = ''; // base64 stored locally only; use image URL for cloud sync
+  }
+  apiSync('saveMenu', cloudData);
+  apiSync('saveRecipes', { menu_id: data.id, recipes: newRecipes });
+
+  closeModal('modal-menu');
+  renderMenuTable(); renderMenuGrid();
+  toast('Saved!', 'success');
+}
+
+async function deleteMenuItem(id) {
+  if (!confirm('Delete this menu item?')) return;
+  APP.menu = APP.menu.filter(m => m.id !== id);
+  APP.recipes = APP.recipes.filter(r => String(r.menu_id) !== String(id));
+  saveLocal();
+  saveMenuImages();
+  apiSync('deleteMenu', { id });
+  renderMenuTable(); renderMenuGrid();
+  toast('Deleted', 'success');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COGS
+   ═══════════════════════════════════════════════════════════ */
+function renderCogs() {
+  const el = document.getElementById('cogs-content');
+  const active = APP.menu.filter(m => m.active !== false && m.active !== 'false');
+  if (!active.length) { el.innerHTML = '<div class="empty-state"><div class="icon">🧮</div><p>Add menu items and ingredient costs first</p></div>'; return; }
+
+  el.innerHTML = active.map(m => {
+    const recs = APP.recipes.filter(r => String(r.menu_id) === String(m.id));
+    let totalCost = 0;
+    const rows = recs.map(rec => {
+      const ing = APP.ingredients.find(i => String(i.id) === String(rec.ingredient_id));
+      const cpu = parseFloat(ing ? ing.cost_per_unit : 0) || 0;
+      const amount = parseFloat(rec.amount) || 0;
+      const cost = cpu * amount;
+      totalCost += cost;
+      return `<div class="cogs-row">
+        <span>${rec.ingredient_name || '—'}</span>
+        <span style="font-family:'DM Mono',monospace;color:var(--text3)">${amount} ${rec.unit}</span>
+        <span style="font-family:'DM Mono',monospace;color:var(--text2)">${rp(cpu)}/unit</span>
+        <span style="font-family:'DM Mono',monospace">${rp(cost)}</span>
+      </div>`;
+    }).join('');
+    const cashPrice = parseFloat(m.price_cash) || 0;
+    const profit = cashPrice - totalCost;
+    const margin = cashPrice > 0 ? (profit / cashPrice * 100).toFixed(1) : 0;
+    const profitColor = margin >= 50 ? 'var(--green)' : margin >= 20 ? 'var(--accent)' : 'var(--red)';
+    return `<div class="cogs-menu-card">
+      <div class="cogs-menu-header"><div class="cogs-menu-name">${m.icon || '☕'} ${m.name}</div><span class="badge badge-blue">${m.category || '—'}</span></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;margin-bottom:6px">
+        <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase">Ingredient</div>
+        <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase">Usage</div>
+        <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase">Cost/Unit</div>
+        <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);text-transform:uppercase">Cost</div>
+      </div>
+      ${rows || '<div style="color:var(--text3);font-size:12px;padding:8px 0">No ingredients linked</div>'}
+      <div class="cogs-total-row"><span>Total COGS per order</span><span style="color:${profitColor};font-family:'DM Mono',monospace">${rp(totalCost)}</span></div>
+      <div style="display:flex;gap:16px;margin-top:8px;font-size:12px;color:var(--text2)">
+        <span>Cash price: <strong style="color:var(--text)">${rp(cashPrice)}</strong></span>
+        <span>Gross profit: <strong style="color:${profitColor}">${rp(profit)}</strong></span>
+        <span>Margin: <strong style="color:${profitColor}">${margin}%</strong></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CASH FLOW LEDGER
+   ═══════════════════════════════════════════════════════════ */
+function setLedType(type) {
+  APP.ledgerType = type;
+  document.getElementById('led-in-btn').className = 'led-type-btn in' + (type === 'Income' ? ' active' : '');
+  document.getElementById('led-out-btn').className = 'led-type-btn out' + (type === 'Expense' ? ' active' : '');
+  const cats = type === 'Income' ? ['Sales','Fund','Other'] : ['Ingredients','Personal','Fund','Other'];
+  document.getElementById('led-cat').innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+async function addLedgerEntry() {
+  const amount = parseFloat(document.getElementById('led-amount').value) || 0;
+  const desc = document.getElementById('led-desc').value.trim();
+  if (!amount) { toast('Enter an amount', 'error'); return; }
+  if (!desc) { toast('Enter a description', 'error'); return; }
+  const entry = {
+    id: uid('LED'),
+    date: document.getElementById('led-date').value || todayStr(),
+    time: nowTime(),
+    type: APP.ledgerType,
+    category: document.getElementById('led-cat').value,
+    description: desc,
+    amount, payment: document.getElementById('led-payment').value, order_id: ''
+  };
+  APP.ledger.push(entry);
+  saveLocal();
+  apiSync('addLedgerEntry', entry);
+  document.getElementById('led-amount').value = '';
+  document.getElementById('led-desc').value = '';
+  renderLedger();
+  toast('Added!', 'success');
+}
+
+function renderLedger() {
+  const from = document.getElementById('led-filter-from').value;
+  const to = document.getElementById('led-filter-to').value;
+  let filtered = APP.ledger.slice();
+  if (from) filtered = filtered.filter(e => e.date >= from);
+  if (to) filtered = filtered.filter(e => e.date <= to);
+
+  // Totals from ALL ledger
+  let tin = 0, tout = 0;
+  // Cash vs QRIS breakdown
+  let cashIn = 0, cashOut = 0, qrisIn = 0, qrisOut = 0;
+  const qrisMethods = ['dana', 'gofood', 'shopee', 'shopeefood', 'gopay'];
+  APP.ledger.forEach(e => {
+    const amt = parseFloat(e.amount || 0);
+    const pay = (e.payment || '').toLowerCase();
+    const isCash = pay === 'cash' || pay === '';
+    const isQris = qrisMethods.some(q => pay.includes(q));
+    if (e.type === 'Income') {
+      tin += amt;
+      // If payment method is known, split by type
+      if (isQris) qrisIn += amt;
+      else cashIn += amt; // cash or unknown → cash pool
+    } else {
+      tout += amt;
+      if (isQris) qrisOut += amt;
+      else cashOut += amt;
+    }
+  });
+  document.getElementById('led-total-in').textContent = rp(tin);
+  document.getElementById('led-total-out').textContent = rp(tout);
+  document.getElementById('led-balance').textContent = rp(tin - tout);
+  // Cash vs QRIS
+  document.getElementById('led-cash-in').textContent = rp(cashIn);
+  document.getElementById('led-cash-out').textContent = rp(cashOut);
+  document.getElementById('led-cash-bal').textContent = rp(cashIn - cashOut);
+  document.getElementById('led-qris-in').textContent = rp(qrisIn);
+  document.getElementById('led-qris-out').textContent = rp(qrisOut);
+  document.getElementById('led-qris-bal').textContent = rp(qrisIn - qrisOut);
+
+  const sorted = filtered.sort((a, b) => ((b.date||'')+(b.time||'')).localeCompare((a.date||'')+(a.time||'')));
+  const tbody = document.getElementById('led-table');
+  const empty = document.getElementById('led-empty');
+  if (!sorted.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = sorted.map(e => {
+    const pay = (e.payment || '').toLowerCase();
+    const isQris = ['dana','gofood','shopee','shopeefood','gopay','grab'].some(q => pay.includes(q));
+    const payLabel = !pay ? '—' : isQris ? '<span class="badge badge-blue">📱 QRIS</span>' : '<span class="badge badge-accent">💵 Cash</span>';
+    const timeDisplay = e.time ? e.time.slice(0,5) : '';
+    return `<tr>
+    <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${e.date} <span style="color:var(--text2)">${timeDisplay}</span></td>
+    <td>${e.type === 'Income' ? '<span class="badge badge-green">↑ In</span>' : '<span class="badge badge-red">↓ Out</span>'}</td>
+    <td>${payLabel}</td>
+    <td><span class="badge badge-blue">${e.category || '—'}</span></td>
+    <td style="color:var(--text2)">${e.description || '—'}</td>
+    <td style="font-family:'DM Mono',monospace;color:${e.type === 'Income' ? 'var(--green)' : 'var(--red)'}">${e.type === 'Income' ? '+' : '−'}${rp(e.amount)}</td>
+  </tr>`;}).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ORDER HISTORY + CANCEL
+   ═══════════════════════════════════════════════════════════ */
+function renderOrders() {
+  const from = document.getElementById('ord-filter-from').value;
+  const to = document.getElementById('ord-filter-to').value;
+  let filtered = APP.orders.slice();
+  if (from) filtered = filtered.filter(o => o.date >= from);
+  if (to) filtered = filtered.filter(o => o.date <= to);
+  const sorted = filtered.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+
+  const tbody = document.getElementById('orders-table');
+  const empty = document.getElementById('orders-empty');
+  if (!sorted.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = sorted.map(o => {
+    const items = APP.orderItems.filter(i => String(i.order_id) === String(o.id));
+    const itemStr = items.map(i => i.menu_name + '×' + i.qty).join(', ');
+    const cancelled = o.status === 'Cancelled';
+    return `<tr style="${cancelled ? 'opacity:.5' : ''}">
+      <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${o.id}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${o.date}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${o.time || '—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${itemStr || '—'}</td>
+      <td><span class="badge badge-blue">${o.payment}</span></td>
+      <td style="font-family:'DM Mono',monospace;color:var(--accent)">${rp(o.total)}</td>
+      <td>${cancelled ? '<span class="badge badge-red">Cancelled</span>' : '<span class="badge badge-green">Active</span>'}</td>
+      <td>${!cancelled ? `<button class="btn btn-danger btn-sm" onclick="openCancel('${o.id}')">Cancel</button>` : '<span style="color:var(--text3);font-size:11px">' + (o.cancel_reason || '—') + '</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function openCancel(orderId) {
+  const o = APP.orders.find(x => x.id === orderId); if (!o) return;
+  const items = APP.orderItems.filter(i => String(i.order_id) === String(orderId));
+  document.getElementById('cancel-order-id').value = orderId;
+  document.getElementById('cancel-info').innerHTML = `Order <strong style="font-family:'DM Mono',monospace">${orderId}</strong><br><span style="font-size:12px">${items.map(i => i.menu_name + '×' + i.qty).join(', ')}</span><br><strong style="color:var(--accent)">${rp(o.total)}</strong>`;
+  document.getElementById('cancel-reason').value = '';
+  openModal('modal-cancel');
+}
+
+async function confirmCancel() {
+  const id = document.getElementById('cancel-order-id').value;
+  const reason = document.getElementById('cancel-reason').value.trim() || 'Cancelled by cashier';
+  const order = APP.orders.find(o => o.id === id);
+  if (!order || order.status === 'Cancelled') return;
+
+  // Mark cancelled
+  order.status = 'Cancelled';
+  order.cancel_reason = reason;
+  order.cancelled_at = new Date().toISOString();
+
+  // Restore stock
+  const items = APP.orderItems.filter(i => String(i.order_id) === String(id));
+  items.forEach(it => {
+    const recs = APP.recipes.filter(r => String(r.menu_id) === String(it.menu_id));
+    recs.forEach(rec => {
+      const ing = APP.ingredients.find(g => String(g.id) === String(rec.ingredient_id));
+      if (ing) {
+        const restore = parseFloat(rec.amount) * parseInt(it.qty);
+        ing.current_stock = parseFloat(ing.current_stock) + restore;
+        APP.stockLog.push({ id: uid('STK'), date: new Date().toISOString(), ingredient_id: ing.id, ingredient_name: ing.name, change: restore, reason: 'Cancel ' + id, order_id: id });
+      }
+    });
+  });
+
+  // Reversal ledger entry
+  APP.ledger.push({ id: uid('LED'), date: todayStr(), time: nowTime(), type: 'Expense', category: 'Sales Reversal', description: 'Cancelled Order ' + id, amount: parseFloat(order.total), payment: order.payment, order_id: id });
+
+  saveLocal();
+  apiSync('cancelOrder', { id, reason });
+
+  closeModal('modal-cancel');
+  renderOrders(); renderStockTable(); renderLedger(); checkLowStock();
+  toast('Order cancelled & stock restored', 'success');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPORTS
+   ═══════════════════════════════════════════════════════════ */
+function switchReport(type, btn) {
+  document.querySelectorAll('.report-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('report-daily').style.display = type === 'daily' ? 'block' : 'none';
+  document.getElementById('report-monthly').style.display = type === 'monthly' ? 'block' : 'none';
+}
+
+function renderDailyReport() {
+  const date = document.getElementById('rep-daily-date').value || todayStr();
+  const dayOrders = APP.orders.filter(o => o.date === date && o.status === 'Active');
+  const dayLedger = APP.ledger.filter(l => l.date === date);
+  const totalSales = dayOrders.reduce((s, o) => s + (parseFloat(o.total) || 0), 0);
+  const payBrk = { cash: 0, dana: 0, gofood: 0, shopee: 0, grab: 0 };
+  dayOrders.forEach(o => { payBrk[o.payment] = (payBrk[o.payment] || 0) + parseFloat(o.total); });
+
+  // COGS
+  let cogs = 0;
+  dayOrders.forEach(o => {
+    const items = APP.orderItems.filter(i => String(i.order_id) === String(o.id));
+    items.forEach(it => {
+      APP.recipes.filter(r => String(r.menu_id) === String(it.menu_id)).forEach(rec => {
+        const ing = APP.ingredients.find(g => String(g.id) === String(rec.ingredient_id));
+        cogs += (parseFloat(ing ? ing.cost_per_unit : 0) || 0) * (parseFloat(rec.amount) || 0) * (parseInt(it.qty) || 0);
+      });
+    });
+  });
+  const expenses = dayLedger.filter(l => l.type === 'Expense' && l.category !== 'Sales Reversal').reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+  const net = totalSales - cogs - expenses;
+
+  // Top items
+  const itemCounts = {};
+  dayOrders.forEach(o => {
+    APP.orderItems.filter(i => String(i.order_id) === String(o.id)).forEach(it => {
+      itemCounts[it.menu_name] = (itemCounts[it.menu_name] || 0) + parseInt(it.qty);
+    });
+  });
+  const top = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]);
+
+  // Cash vs QRIS for the day
+  const qrisKeys = ['dana','gofood','shopee','shopeefood','gopay','grab'];
+  let dayCashIn = 0, dayQrisIn = 0, dayCashOut = 0, dayQrisOut = 0;
+  dayLedger.forEach(e => {
+    const amt = parseFloat(e.amount || 0);
+    const pay = (e.payment || '').toLowerCase();
+    const isQ = qrisKeys.some(q => pay.includes(q));
+    if (e.type === 'Income') { if (isQ) dayQrisIn += amt; else dayCashIn += amt; }
+    else { if (isQ) dayQrisOut += amt; else dayCashOut += amt; }
+  });
+
+  const el = document.getElementById('daily-report-content');
+  const payLabels = { cash: '💵 Cash', dana: '🟦 DANA', gofood: '🟢 GoFood', shopee: '🟠 Shopee', grab: '🟩 Grab' };
+  el.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-label">Orders</div><div class="stat-val">${dayOrders.length}</div></div>
+      <div class="stat-box"><div class="stat-label">Total Sales</div><div class="stat-val accent">${rp(totalSales)}</div></div>
+      <div class="stat-box"><div class="stat-label">COGS</div><div class="stat-val red">${rp(cogs)}</div></div>
+      <div class="stat-box"><div class="stat-label">Expenses</div><div class="stat-val red">${rp(expenses)}</div></div>
+      <div class="stat-box"><div class="stat-label">Net Profit</div><div class="stat-val ${net >= 0 ? 'green' : 'red'}">${rp(net)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card"><div class="card-title">Payment Breakdown</div>
+        <div class="payment-breakdown">${['cash','dana','gofood','shopee','grab'].map(k => `<div class="pay-box"><div class="pbl">${payLabels[k]}</div><div class="pbv">${rp(payBrk[k])}</div></div>`).join('')}</div>
+      </div>
+      <div class="card"><div class="card-title">💵 Cash vs 📱 QRIS</div>
+        <div style="display:flex;gap:8px">
+          <div class="stat-box" style="flex:1;border-color:rgba(114,196,126,.3)">
+            <div class="stat-label">💵 Cash</div>
+            <div class="stat-val green" style="font-size:17px">${rp(dayCashIn - dayCashOut)}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">In: ${rp(dayCashIn)} · Out: ${rp(dayCashOut)}</div>
+          </div>
+          <div class="stat-box" style="flex:1;border-color:rgba(112,168,232,.3)">
+            <div class="stat-label">📱 QRIS</div>
+            <div class="stat-val blue" style="font-size:17px">${rp(dayQrisIn - dayQrisOut)}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">In: ${rp(dayQrisIn)} · Out: ${rp(dayQrisOut)}</div>
+          </div>
+          <div class="stat-box" style="flex:1;border-color:rgba(240,160,48,.3)">
+            <div class="stat-label">💰 Total</div>
+            <div class="stat-val accent" style="font-size:17px">${rp((dayCashIn - dayCashOut) + (dayQrisIn - dayQrisOut))}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">In: ${rp(dayCashIn + dayQrisIn)} · Out: ${rp(dayCashOut + dayQrisOut)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+      <div class="card"><div class="card-title">Top Selling Items</div>
+        ${top.length ? top.map(([n, q]) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${n}</span><span class="badge badge-accent">${q}x</span></div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:10px 0">No sales</div>'}
+      </div>
+      <div class="card"><div class="card-title">Finance Log</div>
+        <table class="tbl"><thead><tr><th>Category</th><th>Description</th><th>Type</th><th>Amount</th></tr></thead>
+        <tbody>${dayLedger.length ? dayLedger.map(e => `<tr><td><span class="badge badge-blue">${e.category}</span></td><td style="color:var(--text2)">${e.description}</td><td>${e.type === 'Income' ? '<span class="badge badge-green">In</span>' : '<span class="badge badge-red">Out</span>'}</td><td style="font-family:'DM Mono',monospace;color:${e.type === 'Income' ? 'var(--green)' : 'var(--red)'}">${rp(e.amount)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:18px">No entries</td></tr>'}</tbody></table>
+      </div>
+    </div>`;
+}
+
+function renderMonthlyReport() {
+  const month = document.getElementById('rep-month').value || thisMonth();
+  const prefix = month + '-';
+  const monthOrders = APP.orders.filter(o => o.date && o.date.startsWith(prefix) && o.status === 'Active');
+  const monthLedger = APP.ledger.filter(l => l.date && l.date.startsWith(prefix));
+  const totalSales = monthOrders.reduce((s, o) => s + (parseFloat(o.total) || 0), 0);
+
+  // Payment breakdown
+  const payBrk = { cash: 0, dana: 0, gofood: 0, shopee: 0, grab: 0 };
+  monthOrders.forEach(o => { payBrk[o.payment] = (payBrk[o.payment] || 0) + parseFloat(o.total); });
+
+  // COGS
+  let cogs = 0;
+  monthOrders.forEach(o => {
+    const items = APP.orderItems.filter(i => String(i.order_id) === String(o.id));
+    items.forEach(it => {
+      APP.recipes.filter(r => String(r.menu_id) === String(it.menu_id)).forEach(rec => {
+        const ing = APP.ingredients.find(g => String(g.id) === String(rec.ingredient_id));
+        cogs += (parseFloat(ing ? ing.cost_per_unit : 0) || 0) * (parseFloat(rec.amount) || 0) * (parseInt(it.qty) || 0);
+      });
+    });
+  });
+
+  // Expenses (exclude sales reversals)
+  const expenses = monthLedger.filter(l => l.type === 'Expense' && l.category !== 'Sales Reversal').reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+  const net = totalSales - cogs - expenses;
+
+  // ALL menu item sales (not just top — full list sorted by qty)
+  const itemCounts = {};
+  monthOrders.forEach(o => {
+    APP.orderItems.filter(i => String(i.order_id) === String(o.id)).forEach(it => {
+      itemCounts[it.menu_name] = (itemCounts[it.menu_name] || 0) + parseInt(it.qty);
+    });
+  });
+  const allItems = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]);
+
+  // Stock usage
+  const monthLogs = APP.stockLog.filter(l => l.date && l.date.startsWith(month) && parseFloat(l.change) < 0);
+  const usage = {};
+  monthLogs.forEach(l => { usage[l.ingredient_name] = (usage[l.ingredient_name] || 0) + Math.abs(parseFloat(l.change)); });
+  const usageList = Object.entries(usage).sort((a, b) => b[1] - a[1]);
+
+  // Restock needed
+  const restock = APP.ingredients.filter(i => parseFloat(i.current_stock) <= parseFloat(i.min_stock) && parseFloat(i.min_stock) > 0);
+
+  // Cash vs QRIS for the month
+  const qrisKeys = ['dana','gofood','shopee','shopeefood','gopay','grab'];
+  let mCashIn = 0, mQrisIn = 0, mCashOut = 0, mQrisOut = 0;
+  monthLedger.forEach(e => {
+    const amt = parseFloat(e.amount || 0);
+    const pay = (e.payment || '').toLowerCase();
+    const isQ = qrisKeys.some(q => pay.includes(q));
+    if (e.type === 'Income') { if (isQ) mQrisIn += amt; else mCashIn += amt; }
+    else { if (isQ) mQrisOut += amt; else mCashOut += amt; }
+  });
+
+  const payLabels = { cash: '💵 Cash', dana: '🟦 DANA', gofood: '🟢 GoFood', shopee: '🟠 Shopee', grab: '🟩 Grab' };
+  const el = document.getElementById('monthly-report-content');
+  el.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-label">Total Orders</div><div class="stat-val">${monthOrders.length}</div></div>
+      <div class="stat-box"><div class="stat-label">Total Sales</div><div class="stat-val accent">${rp(totalSales)}</div></div>
+      <div class="stat-box"><div class="stat-label">COGS</div><div class="stat-val red">${rp(cogs)}</div></div>
+      <div class="stat-box"><div class="stat-label">Expenses</div><div class="stat-val red">${rp(expenses)}</div></div>
+      <div class="stat-box"><div class="stat-label">Net Profit</div><div class="stat-val ${net >= 0 ? 'green' : 'red'}">${rp(net)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card"><div class="card-title">Payment Breakdown</div>
+        <div class="payment-breakdown">${['cash','dana','gofood','shopee','grab'].map(k => `<div class="pay-box"><div class="pbl">${payLabels[k]}</div><div class="pbv">${rp(payBrk[k])}</div></div>`).join('')}</div>
+      </div>
+      <div class="card"><div class="card-title">💵 Cash vs 📱 QRIS</div>
+        <div style="display:flex;gap:8px">
+          <div class="stat-box" style="flex:1;border-color:rgba(114,196,126,.3)">
+            <div class="stat-label">💵 Cash</div>
+            <div class="stat-val green" style="font-size:17px">${rp(mCashIn - mCashOut)}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">In: ${rp(mCashIn)} · Out: ${rp(mCashOut)}</div>
+          </div>
+          <div class="stat-box" style="flex:1;border-color:rgba(112,168,232,.3)">
+            <div class="stat-label">📱 QRIS</div>
+            <div class="stat-val blue" style="font-size:17px">${rp(mQrisIn - mQrisOut)}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">In: ${rp(mQrisIn)} · Out: ${rp(mQrisOut)}</div>
+          </div>
+          <div class="stat-box" style="flex:1;border-color:rgba(240,160,48,.3)">
+            <div class="stat-label">💰 Total</div>
+            <div class="stat-val accent" style="font-size:17px">${rp((mCashIn - mCashOut) + (mQrisIn - mQrisOut))}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">In: ${rp(mCashIn + mQrisIn)} · Out: ${rp(mCashOut + mQrisOut)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+      <div class="card" style="border-color:rgba(232,112,112,.3)"><div class="card-title" style="color:var(--red)">🔔 Restock Needed</div>
+        ${restock.length ? restock.map(r => `<div style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="badge badge-red">${r.name}</span> <span style="color:var(--text2);font-size:11px">${parseFloat(r.current_stock).toFixed(1)}/${r.min_stock} ${r.unit}</span></div>`).join('') : '<div style="color:var(--green);padding:10px 0">✓ All levels OK</div>'}
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px"><div class="card-title">Sales Per Menu Item (All Items)</div>
+      <table class="tbl"><thead><tr><th>#</th><th>Menu Item</th><th>Qty Sold</th></tr></thead>
+      <tbody>${allItems.length ? allItems.map(([n, q], i) => `<tr>
+        <td style="font-family:'DM Mono',monospace;color:var(--text3)">${i + 1}</td>
+        <td>${n}</td>
+        <td style="font-family:'DM Mono',monospace"><span class="badge badge-accent">${q}x</span></td>
+      </tr>`).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:18px">No sales data</td></tr>'}</tbody></table>
+    </div>
+    <div class="card" style="margin-top:12px"><div class="card-title">Stock Usage This Month</div>
+      <table class="tbl"><thead><tr><th>Ingredient</th><th>Total Used</th></tr></thead>
+      <tbody>${usageList.length ? usageList.map(([n, a]) => `<tr><td>${n}</td><td style="font-family:'DM Mono',monospace">${a.toLocaleString('id-ID')}</td></tr>`).join('') : '<tr><td colspan="2" style="text-align:center;color:var(--text3);padding:18px">No usage data</td></tr>'}</tbody></table>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS
+   ═══════════════════════════════════════════════════════════ */
+function applyTaxUI() {
+  document.getElementById('set-tax').value = APP.taxRate;
+  document.getElementById('set-tax-apply').value = APP.taxApply;
+  updateTotals();
+}
+
+async function saveAndTestUrl() {
+  const url = document.getElementById('set-api-url').value.trim();
+  APP.scriptUrl = url;
+  localStorage.setItem('mb_script_url', url);
+  const el = document.getElementById('conn-result');
+  if (!url) { el.innerHTML = '<span style="color:var(--text3)">No URL set — running in local mode</span>'; return; }
+  el.innerHTML = '<div class="spinner"></div> Testing…';
+  try {
+    const payload = JSON.stringify({ action: 'ping' });
+    const resp = await fetch(url + '?payload=' + encodeURIComponent(payload));
+    const json = await resp.json();
+    if (json.ok) {
+      el.innerHTML = '<span style="color:var(--green)">✓ Connection successful!</span>';
+      setSyncOk(); hideBanner();
+    } else {
+      el.innerHTML = '<span style="color:var(--red)">✗ ' + (json.error || 'Error') + '</span>';
+    }
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--red)">✗ Connection failed — check URL</span>';
+  }
+}
+
+function saveTaxSettings() {
+  APP.taxRate = parseFloat(document.getElementById('set-tax').value) || 0;
+  APP.taxApply = document.getElementById('set-tax-apply').value;
+  saveTaxToLS();
+  updateTotals();
+  const msg = document.getElementById('tax-saved-msg');
+  msg.style.display = 'block';
+  setTimeout(() => msg.style.display = 'none', 2500);
+  toast('Tax settings saved!', 'success');
+}
+
+function clearLocalData() {
+  if (!confirm('Clear all local data? Google Sheets data is unaffected.')) return;
+  localStorage.removeItem(lsKey());
+  APP.menu = []; APP.ingredients = []; APP.recipes = [];
+  APP.orders = []; APP.orderItems = []; APP.ledger = []; APP.stockLog = [];
+  renderAll();
+  toast('Local data cleared', 'success');
+}
+
+function exportCSV(type) {
+  let headers, rows, filename;
+  const esc = v => '"' + String(v || '').replace(/"/g, '""') + '"';
+  if (type === 'orders') {
+    headers = ['Order ID','Date','Time','Payment','Total','Status','Note'];
+    rows = APP.orders.map(o => [o.id, o.date, o.time, o.payment, o.total, o.status, o.note]);
+    filename = 'matchaboy_orders.csv';
+  } else if (type === 'ingredients') {
+    headers = ['Name','Current Stock','Unit','Min Level','Pack Size','Pack Price','Cost/Unit'];
+    rows = APP.ingredients.map(i => [i.name, i.current_stock, i.unit, i.min_stock, i.pack_size, i.pack_price, i.cost_per_unit]);
+    filename = 'matchaboy_stock.csv';
+  } else {
+    headers = ['Date','Type','Category','Description','Amount','Payment'];
+    rows = APP.ledger.map(l => [l.date, l.type, l.category, l.description, l.amount, l.payment]);
+    filename = 'matchaboy_cashflow.csv';
+  }
+  const csv = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('Downloaded ' + filename, 'success');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL / TOAST
+   ═══════════════════════════════════════════════════════════ */
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
+
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (type || 'success') + ' show';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = 'toast', 3500);
+}
+
+// Enter key on login password
+document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>
