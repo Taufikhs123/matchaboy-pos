@@ -1507,6 +1507,17 @@ async function saveMenuItem() {
   saveLocal();
   saveMenuImages(); // persist images separately so sync never loses them
 
+  // Check if image was cleared or changed — delete old GitHub image if needed
+  const oldMenu = editId ? APP.menu.find(m => m.id === editId) : null;
+  const oldImage = oldMenu ? oldMenu.image : '';
+  const oldIsGH = oldImage && oldImage.includes('github.io');
+  const newIsBase64 = data.image && data.image.startsWith('data:');
+  const imageCleared = oldIsGH && !data.image;
+  const imageChanged = oldIsGH && newIsBase64;
+  if ((imageCleared || imageChanged) && APP.ghToken && APP.ghRepo) {
+    deleteImageFromGitHub(data.id);
+  }
+
   // Upload image to GitHub if it's base64 and GitHub is configured
   const cloudData = Object.assign({}, data);
   if (cloudData.image && cloudData.image.startsWith('data:')) {
@@ -1514,19 +1525,20 @@ async function saveMenuItem() {
       toast('Uploading image to GitHub...', 'info');
       const ghUrl = await uploadImageToGitHub(cloudData.image, data.id);
       if (ghUrl) {
-        cloudData.image = ghUrl;
-        // Also update local data with the URL so it syncs everywhere
-        data.image = ghUrl;
+        // Add cache-buster so GitHub Pages CDN serves the new image
+        const bustUrl = ghUrl + '?v=' + Date.now();
+        cloudData.image = bustUrl;
+        data.image = bustUrl;
         const mi = APP.menu.findIndex(m => m.id === data.id);
-        if (mi >= 0) APP.menu[mi].image = ghUrl;
+        if (mi >= 0) APP.menu[mi].image = bustUrl;
         saveLocal();
         saveMenuImages();
       } else {
-        cloudData.image = ''; // upload failed, don't send base64 to cloud
+        cloudData.image = '';
         toast('Image upload failed — saved locally only', 'error');
       }
     } else {
-      cloudData.image = ''; // no GitHub config — base64 local only
+      cloudData.image = '';
     }
   }
   apiSync('saveMenu', cloudData);
