@@ -694,7 +694,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:14px}
         <label>Product Image</label>
         <div class="img-upload-area" id="menu-img-area" onclick="document.getElementById('menu-img-input').click()">
           <div id="menu-img-preview"><span style="font-size:24px">📷</span><br><span style="font-size:11px;color:var(--text3)">Click to upload image</span></div>
-          <input type="file" id="menu-img-input" accept="image/*" onchange="handleMenuImage(this)">
+          <input type="file" id="menu-img-input" accept="image/*" onchange="handleMenuImage(this)" onclick="event.stopPropagation()">
         </div>
         <input type="hidden" id="menu-img-data">
         <div style="display:flex;gap:6px;margin-top:4px">
