@@ -29,20 +29,27 @@ const mf = {
 const mfBlob = new Blob([JSON.stringify(mf)], {type:'application/json'});
 document.querySelector('link[rel=manifest]').href = URL.createObjectURL(mfBlob);
 
-// Register service worker for offline + install prompt
+// Service worker: always fetch fresh from network, only cache as fallback
+// Also clears old caches on every load so updates are instant
 if ('serviceWorker' in navigator) {
+  // Clear all old caches on page load
+  caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
   const swCode = `
-    const CACHE = 'matchaboy-v1';
-    self.addEventListener('install', e => {
-      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])));
-      self.skipWaiting();
-    });
+    self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
-      e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
+      e.waitUntil(caches.keys().then(ks => Promise.all(ks.map(k=>caches.delete(k)))));
+      self.clients.claim();
     });
     self.addEventListener('fetch', e => {
-      if (e.request.url.includes('script.google.com') || e.request.url.includes('fonts.g')) return;
-      e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+      e.respondWith(
+        fetch(e.request).then(resp => {
+          if (resp.ok && e.request.method === 'GET' && !e.request.url.includes('script.google.com')) {
+            const clone = resp.clone();
+            caches.open('mb-v2').then(c => c.put(e.request, clone));
+          }
+          return resp;
+        }).catch(() => caches.match(e.request))
+      );
     });
   `;
   const swBlob = new Blob([swCode], {type:'application/javascript'});
@@ -1532,6 +1539,8 @@ async function saveMenuItem() {
 
 async function deleteMenuItem(id) {
   if (!confirm('Delete this menu item?')) return;
+  // Delete image from GitHub if configured
+  deleteImageFromGitHub(id);
   APP.menu = APP.menu.filter(m => m.id !== id);
   APP.recipes = APP.recipes.filter(r => String(r.menu_id) !== String(id));
   saveLocal();
@@ -2071,6 +2080,26 @@ async function uploadImageToGitHub(base64data, menuId) {
     console.error('GitHub upload failed:', await resp.text());
     return null;
   } catch(e) { console.error('GitHub upload error:', e); return null; }
+}
+
+async function deleteImageFromGitHub(menuId) {
+  if (!APP.ghToken || !APP.ghRepo) return;
+  // Try both jpg and png extensions
+  for (const ext of ['jpg', 'png']) {
+    const path = 'images/' + menuId + '.' + ext;
+    const apiUrl = 'https://api.github.com/repos/' + APP.ghRepo + '/contents/' + path;
+    try {
+      const check = await fetch(apiUrl, { headers: { Authorization: 'token ' + APP.ghToken } });
+      if (check.ok) {
+        const existing = await check.json();
+        await fetch(apiUrl, {
+          method: 'DELETE',
+          headers: { Authorization: 'token ' + APP.ghToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Delete menu image: ' + menuId, sha: existing.sha })
+        });
+      }
+    } catch(e) { console.warn('GitHub image delete error:', e); }
+  }
 }
 
 function clearLocalData() {
