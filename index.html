@@ -596,6 +596,16 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:14px}
               </div>
             </div>
             <div class="card">
+              <div class="card-title">GitHub Image Storage</div>
+              <p style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+                Store menu images on GitHub so they work across all devices. Get a token from GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate. Give it <b>Contents: Read and Write</b> access to matchaboy-pos repo.
+              </p>
+              <div class="field"><label>GitHub Token</label><input type="password" id="set-gh-token" placeholder="github_pat_..."></div>
+              <div class="field"><label>Repo (owner/name)</label><input type="text" id="set-gh-repo" value="Taufikhs123/matchaboy-pos"></div>
+              <button class="btn btn-primary" onclick="saveGitHubSettings()">Save GitHub Settings</button>
+              <div id="gh-result" style="margin-top:8px;font-size:12px"></div>
+            </div>
+            <div class="card">
               <div class="card-title">Danger Zone</div>
               <button class="btn btn-danger btn-full" onclick="clearLocalData()">🗑️ Clear Local Cache</button>
               <p style="font-size:11px;color:var(--text3);margin-top:8px">This only clears the browser cache. Google Sheets data is unaffected.</p>
@@ -904,6 +914,8 @@ function launchApp() {
   // Tax
   loadTaxSettings();
   applyTaxUI();
+  // GitHub image settings
+  loadGitHubSettings();
   // Sync status
   if (!APP.scriptUrl && !APP.isDemo) { document.getElementById('sync-label').textContent = 'Local'; }
   hideBanner();
@@ -1471,10 +1483,27 @@ async function saveMenuItem() {
   saveLocal();
   saveMenuImages(); // persist images separately so sync never loses them
 
-  // Send to cloud — strip base64 images (too large for GET URL), keep URL images
+  // Upload image to GitHub if it's base64 and GitHub is configured
   const cloudData = Object.assign({}, data);
   if (cloudData.image && cloudData.image.startsWith('data:')) {
-    cloudData.image = ''; // base64 stored locally only; use image URL for cloud sync
+    if (APP.ghToken && APP.ghRepo) {
+      toast('Uploading image to GitHub...', 'info');
+      const ghUrl = await uploadImageToGitHub(cloudData.image, data.id);
+      if (ghUrl) {
+        cloudData.image = ghUrl;
+        // Also update local data with the URL so it syncs everywhere
+        data.image = ghUrl;
+        const mi = APP.menu.findIndex(m => m.id === data.id);
+        if (mi >= 0) APP.menu[mi].image = ghUrl;
+        saveLocal();
+        saveMenuImages();
+      } else {
+        cloudData.image = ''; // upload failed, don't send base64 to cloud
+        toast('Image upload failed — saved locally only', 'error');
+      }
+    } else {
+      cloudData.image = ''; // no GitHub config — base64 local only
+    }
   }
   apiSync('saveMenu', cloudData);
   apiSync('saveRecipes', { menu_id: data.id, recipes: newRecipes });
@@ -1958,6 +1987,67 @@ function saveTaxSettings() {
   msg.style.display = 'block';
   setTimeout(() => msg.style.display = 'none', 2500);
   toast('Tax settings saved!', 'success');
+}
+
+// ─── GitHub Image Storage ────────────────────────────────
+function saveGitHubSettings() {
+  const token = document.getElementById('set-gh-token').value.trim();
+  const repo = document.getElementById('set-gh-repo').value.trim();
+  localStorage.setItem('mb_gh_token', token);
+  localStorage.setItem('mb_gh_repo', repo);
+  APP.ghToken = token;
+  APP.ghRepo = repo;
+  const el = document.getElementById('gh-result');
+  if (!token || !repo) { el.innerHTML = '<span style="color:var(--text3)">Settings saved (no token = local images only)</span>'; return; }
+  el.innerHTML = '<div class="spinner"></div> Testing…';
+  fetch('https://api.github.com/repos/' + repo, { headers: { Authorization: 'token ' + token } })
+    .then(r => r.json())
+    .then(d => {
+      if (d.full_name) el.innerHTML = '<span style="color:var(--green)">✓ Connected to ' + d.full_name + '</span>';
+      else el.innerHTML = '<span style="color:var(--red)">✗ ' + (d.message || 'Error') + '</span>';
+    })
+    .catch(() => { el.innerHTML = '<span style="color:var(--red)">✗ Connection failed</span>'; });
+}
+
+function loadGitHubSettings() {
+  APP.ghToken = localStorage.getItem('mb_gh_token') || '';
+  APP.ghRepo = localStorage.getItem('mb_gh_repo') || '';
+  const tokenEl = document.getElementById('set-gh-token');
+  const repoEl = document.getElementById('set-gh-repo');
+  if (tokenEl && APP.ghToken) tokenEl.value = APP.ghToken;
+  if (repoEl && APP.ghRepo) repoEl.value = APP.ghRepo;
+}
+
+async function uploadImageToGitHub(base64data, menuId) {
+  if (!APP.ghToken || !APP.ghRepo) return null;
+  // Extract pure base64 content
+  const base64 = base64data.split(',')[1];
+  const ext = base64data.includes('image/png') ? 'png' : 'jpg';
+  const path = 'images/' + menuId + '.' + ext;
+  const apiUrl = 'https://api.github.com/repos/' + APP.ghRepo + '/contents/' + path;
+
+  try {
+    // Check if file exists (to get sha for update)
+    let sha = '';
+    const check = await fetch(apiUrl, { headers: { Authorization: 'token ' + APP.ghToken } });
+    if (check.ok) { const existing = await check.json(); sha = existing.sha; }
+
+    const body = { message: 'Update menu image: ' + menuId, content: base64 };
+    if (sha) body.sha = sha;
+
+    const resp = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: { Authorization: 'token ' + APP.ghToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (resp.ok) {
+      // Return the GitHub Pages URL
+      const pagesUrl = 'https://' + APP.ghRepo.split('/')[0].toLowerCase() + '.github.io/' + APP.ghRepo.split('/')[1] + '/' + path;
+      return pagesUrl;
+    }
+    console.error('GitHub upload failed:', await resp.text());
+    return null;
+  } catch(e) { console.error('GitHub upload error:', e); return null; }
 }
 
 function clearLocalData() {
