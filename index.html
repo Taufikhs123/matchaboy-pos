@@ -751,10 +751,15 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:14px}
 
 <script>
 /* ═══════════════════════════════════════════════════════════
+   CONFIG — Set your script URL here so all devices get it automatically
+   ═══════════════════════════════════════════════════════════ */
+const DEFAULT_SCRIPT_URL = ''; // ← Paste your Apps Script URL here
+
+/* ═══════════════════════════════════════════════════════════
    APP STATE
    ═══════════════════════════════════════════════════════════ */
 const APP = {
-  scriptUrl: localStorage.getItem('mb_script_url') || '',
+  scriptUrl: localStorage.getItem('mb_script_url') || DEFAULT_SCRIPT_URL,
   branch: '', password: '', isDemo: false,
   // Data
   menu: [], ingredients: [], recipes: [],
