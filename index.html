@@ -2085,8 +2085,8 @@ async function uploadImageToGitHub(base64data, menuId) {
       body: JSON.stringify(body)
     });
     if (resp.ok) {
-      // Return the GitHub Pages URL
-      const pagesUrl = 'https://' + APP.ghRepo.split('/')[0].toLowerCase() + '.github.io/' + APP.ghRepo.split('/')[1] + '/' + path;
+      // Return raw GitHub URL (updates instantly, no deployment wait)
+      const pagesUrl = 'https://raw.githubusercontent.com/' + APP.ghRepo + '/main/' + path;
       return pagesUrl;
     }
     console.error('GitHub upload failed:', await resp.text());
