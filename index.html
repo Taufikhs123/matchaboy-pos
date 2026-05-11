@@ -2151,16 +2151,34 @@ async function pushLocalToCloud() {
     }
   }
 
-  // 3. Push missing menu items (strip base64 images)
+  // 3. Push missing menu items (upload base64 images to GitHub if configured)
   for (const m of APP.menu) {
     if (!cloudMenuIds.has(String(m.id))) {
       update(`Uploading menu: ${m.name}…`);
       const cloudData = Object.assign({}, m);
-      if (cloudData.image && cloudData.image.startsWith('data:')) cloudData.image = '';
+      if (cloudData.image && cloudData.image.startsWith('data:')) {
+        if (APP.ghToken && APP.ghRepo) {
+          update(`Uploading image for: ${m.name}…`);
+          const ghUrl = await uploadImageToGitHub(cloudData.image, m.id);
+          if (ghUrl) {
+            const bustUrl = ghUrl + '?v=' + Date.now();
+            cloudData.image = bustUrl;
+            // Update local menu with the URL too
+            const mi = APP.menu.findIndex(x => x.id === m.id);
+            if (mi >= 0) APP.menu[mi].image = bustUrl;
+          } else {
+            cloudData.image = ''; // upload failed
+          }
+        } else {
+          cloudData.image = ''; // no GitHub configured
+        }
+      }
       const r = await api('saveMenu', cloudData);
       if (r && r.ok) count++; else errors++;
     }
   }
+  saveLocal();
+  saveMenuImages();
 
   // 4. Push all recipes (grouped by menu)
   const recipesByMenu = {};
