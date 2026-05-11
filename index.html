@@ -613,6 +613,14 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:14px}
               <div id="gh-result" style="margin-top:8px;font-size:12px"></div>
             </div>
             <div class="card">
+              <div class="card-title">Push Local Data to Cloud</div>
+              <p style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+                If you used the app without an Apps Script URL, your data is saved locally only. Click here to upload all local data (orders, ledger, menu, stock) to Google Sheets. Duplicates are skipped automatically.
+              </p>
+              <button class="btn btn-primary btn-full" onclick="pushLocalToCloud()">☁️ Push Local Data to Cloud</button>
+              <div id="push-result" style="margin-top:8px;font-size:12px"></div>
+            </div>
+            <div class="card">
               <div class="card-title">Danger Zone</div>
               <button class="btn btn-danger btn-full" onclick="clearLocalData()">🗑️ Clear Local Cache</button>
               <p style="font-size:11px;color:var(--text3);margin-top:8px">This only clears the browser cache. Google Sheets data is unaffected.</p>
@@ -2112,6 +2120,96 @@ async function deleteImageFromGitHub(menuId) {
       }
     } catch(e) { console.warn('GitHub image delete error:', e); }
   }
+}
+
+async function pushLocalToCloud() {
+  if (!APP.scriptUrl) { toast('Set Apps Script URL first in the connection card above', 'error'); return; }
+  if (APP.isDemo) { toast('Demo mode — cannot push to cloud', 'error'); return; }
+  if (!confirm('Push all local data to Google Sheets? Items already in cloud will be skipped.')) return;
+
+  const el = document.getElementById('push-result');
+  el.innerHTML = '<div class="spinner"></div> Fetching cloud state…';
+
+  // 1. Get current cloud data to detect duplicates
+  const res = await api('syncAll');
+  if (!res || !res.ok) { el.innerHTML = '<span style="color:var(--red)">✗ Cannot connect to cloud</span>'; return; }
+
+  const cloudOrderIds = new Set((res.orders || []).map(o => String(o.id)));
+  const cloudLedgerIds = new Set((res.ledger || []).map(l => String(l.id)));
+  const cloudMenuIds = new Set((res.menu || []).map(m => String(m.id)));
+  const cloudIngIds = new Set((res.ingredients || []).map(i => String(i.id)));
+
+  let count = 0, errors = 0;
+  const update = msg => el.innerHTML = '<div class="spinner"></div> ' + msg;
+
+  // 2. Push missing ingredients first (recipes depend on them)
+  for (const ing of APP.ingredients) {
+    if (!cloudIngIds.has(String(ing.id))) {
+      update(`Uploading ingredient: ${ing.name}…`);
+      const r = await api('saveIngredient', ing);
+      if (r && r.ok) count++; else errors++;
+    }
+  }
+
+  // 3. Push missing menu items (strip base64 images)
+  for (const m of APP.menu) {
+    if (!cloudMenuIds.has(String(m.id))) {
+      update(`Uploading menu: ${m.name}…`);
+      const cloudData = Object.assign({}, m);
+      if (cloudData.image && cloudData.image.startsWith('data:')) cloudData.image = '';
+      const r = await api('saveMenu', cloudData);
+      if (r && r.ok) count++; else errors++;
+    }
+  }
+
+  // 4. Push all recipes (grouped by menu)
+  const recipesByMenu = {};
+  APP.recipes.forEach(r => {
+    const k = String(r.menu_id);
+    if (!recipesByMenu[k]) recipesByMenu[k] = [];
+    recipesByMenu[k].push(r);
+  });
+  for (const menuId in recipesByMenu) {
+    update(`Uploading recipes for menu ${menuId}…`);
+    const r = await api('saveRecipes', { menu_id: menuId, recipes: recipesByMenu[menuId] });
+    if (r && r.ok) count++; else errors++;
+  }
+
+  // 5. Push missing orders (with their items)
+  for (const o of APP.orders) {
+    if (!cloudOrderIds.has(String(o.id))) {
+      update(`Uploading order: ${o.id}…`);
+      const items = APP.orderItems.filter(i => String(i.order_id) === String(o.id))
+        .map(i => ({ menu_id: i.menu_id, menu_name: i.menu_name, qty: i.qty, price: i.price }));
+      const r = await api('placeOrder', {
+        orderId: o.id, date: o.date, time: o.time,
+        payment: o.payment, total: o.total, items, note: o.note || ''
+      });
+      if (r && r.ok) {
+        count++;
+        // If this order was cancelled locally, cancel it in cloud too
+        if (o.status === 'Cancelled') {
+          await api('cancelOrder', { id: o.id, reason: o.cancel_reason || 'Re-synced' });
+        }
+      } else errors++;
+    }
+  }
+
+  // 6. Push missing ledger entries (skip Sales/Sales Reversal — already created by placeOrder/cancelOrder)
+  for (const l of APP.ledger) {
+    if (!cloudLedgerIds.has(String(l.id)) && l.category !== 'Sales' && l.category !== 'Sales Reversal') {
+      update(`Uploading ledger: ${l.description}…`);
+      const r = await api('addLedgerEntry', l);
+      if (r && r.ok) count++; else errors++;
+    }
+  }
+
+  el.innerHTML = `<span style="color:var(--green)">✓ Uploaded ${count} items</span>` +
+    (errors > 0 ? ` <span style="color:var(--red)">(${errors} errors)</span>` : '');
+  toast(`Pushed ${count} items to cloud!`, 'success');
+
+  // Refresh from cloud to get clean state
+  setTimeout(fullSync, 1000);
 }
 
 function clearLocalData() {
